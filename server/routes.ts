@@ -214,7 +214,7 @@ Rules:
 - Include ALL numbered notes — even short ones like "MINIMUM BEND RELIEF."
 - noteText = the complete note text, EXCLUDING the leading number and period.
 - yPercent = vertical position of the note number (0=top, 100=bottom).
-- Do NOT include triangle warning symbols (△) as separate notes.
+- Notes with a triangle (△) symbol around their number ARE valid notes — include them.
 - Do NOT include sub-items without their own note number.
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
