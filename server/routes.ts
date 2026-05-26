@@ -199,19 +199,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const mimeType = req.file.mimetype || "image/png";
 
       const prompt = `This is a cropped image of the NOTES section from an engineering drawing.
-Extract every numbered note line and return ONLY valid JSON in this exact format:
+Your job is to extract EVERY numbered note. First, scan the entire image and count ALL the note numbers you can see (1, 2, 3, 4... up to the highest number). Then extract each one.
+
+Return ONLY valid JSON in this exact format:
 {
   "notes": [
     { "noteNum": 1, "noteText": "full text of note 1", "yPercent": 5.2 },
     { "noteNum": 2, "noteText": "full text of note 2", "yPercent": 12.8 }
   ]
 }
+
 Rules:
-- Include ALL numbered notes visible, even if text is long.
-- noteText = the complete note text, exactly as written, EXCLUDING the leading number and period.
-- yPercent = the vertical position (0=top, 100=bottom) of the note NUMBER in the image.
-- IMPORTANT: Do NOT skip any notes. Count all numbered notes carefully and include every single one.
-- Do NOT include triangle warning symbols or sub-notes without numbers.
+- SCAN THE FULL IMAGE top to bottom. Do not stop early.
+- Include ALL numbered notes — even short ones like "MINIMUM BEND RELIEF."
+- noteText = the complete note text, EXCLUDING the leading number and period.
+- yPercent = vertical position of the note number (0=top, 100=bottom).
+- Do NOT include triangle warning symbols (△) as separate notes.
+- Do NOT include sub-items without their own note number.
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
       const response = await openai.chat.completions.create({
