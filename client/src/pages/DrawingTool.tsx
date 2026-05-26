@@ -933,7 +933,7 @@ export default function DrawingTool() {
       // X position: zigzag — odd rows (1,3,5) inner (closer to frame), even rows (2,4,6) outer
       // Inner = just outside left edge, Outer = one balloon diameter further left
       const X_INNER = ((cropRect.x - BALLOON_RADIUS - 4) / canvasW) * 100;
-      const X_OUTER = ((cropRect.x - BALLOON_RADIUS * 3 - 8) / canvasW) * 100;
+      const X_OUTER = ((cropRect.x - BALLOON_RADIUS * 3 - 6) / canvasW) * 100; // min gap: just enough to not overlap
       // Y start: bottom of the crop rect, stack upward
       const cropBottomPct = ((cropRect.y + cropRect.h - BALLOON_RADIUS - 4) / canvasH) * 100;
 
