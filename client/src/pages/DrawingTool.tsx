@@ -556,13 +556,7 @@ export default function DrawingTool() {
       const H = overlayRef.current!.height;
       const dx = ((x - dragStartCanvasRef.current.x) / W) * 100;
       const dy = ((y - dragStartCanvasRef.current.y) / H) * 100;
-      // rAF-driven for smooth live redraw
-      if (rafRef.current === null) {
-        rafRef.current = requestAnimationFrame(() => {
-          rafRef.current = null;
-          setMultiDragDeltas({ dx, dy });
-        });
-      }
+      setMultiDragDeltas({ dx, dy });
       return;
     }
 
