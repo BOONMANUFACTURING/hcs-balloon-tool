@@ -68,7 +68,7 @@ export default function DrawingTool() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.5);
-  const BALLOON_RADIUS = Math.round(scale * 18); // scales with zoom: 41%→7px, 100%→18px, 177%→32px
+  const BALLOON_RADIUS = Math.round(scale * 13); // scales with zoom: 41%→5px, 100%→13px, 150%→20px, 177%→23px
   const [pageRendering, setPageRendering] = useState(false);
 
   // ── Draw-rect state ──
