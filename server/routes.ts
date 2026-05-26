@@ -453,6 +453,15 @@ EXAMPLE D — MULTIPLE WELDS, size + distance + pitch (e.g. 2X fillet .19 / .75-
   "confidence": "high"
 }
 
+EXAMPLE E — MULTIPLE WELDS, NO numeric values (e.g. 4X BACKWELD, no size/distance/pitch numbers on symbol):
+{
+  "rawReading": "4X backweld, no numeric values on symbol",
+  "rows": [
+    { "rowType": "NOTE", "description": "4X BACKWELD", "gdtType": "", "nominalValue": "In Compliance" }
+  ],
+  "confidence": "high"
+}
+
 Rules:
 - rowType: "NOTE" or "DIMENSION" only
 - gdtType: always "" for all weld rows
