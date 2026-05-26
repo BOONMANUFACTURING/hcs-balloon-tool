@@ -940,8 +940,8 @@ export default function DrawingTool() {
       // Calculate starting number ONCE before the loop
       const existingNumsBom = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       let nextNum = existingNumsBom.length > 0 ? Math.max(...existingNumsBom) + 1 : 1;
-      // Reverse rows so Item 1 is at bottom, last item at top
-      const orderedRows = [...rows].reverse();
+      // Sort by itemNo ascending so Item 1 is at index 0 (placed at bottom)
+      const orderedRows = [...rows].sort((a, b) => a.itemNo - b.itemNo);
       // Row height = crop height divided by number of rows (align each balloon to its BOM row)
       const rowHeightPct = (cropRect.h / canvasH) * 100 / orderedRows.length;
 
