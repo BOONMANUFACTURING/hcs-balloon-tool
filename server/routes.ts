@@ -390,10 +390,10 @@ SINGLE WELD (no multiplier — no NX, no N SIDES):
 
 MULTIPLE WELDS (has any multiplier — NX or N SIDES):
 - (MIN) and (MAX) rows required for every DIMENSION type. Two rows per measurement type, same value.
-- CRITICAL: Only create DIMENSION rows if there are actual numeric size/distance/pitch values on the drawing symbol itself.
+- CRITICAL: Only create DIMENSION rows if numeric size/distance/pitch values appear DIRECTLY ON the weld symbol itself (attached to the symbol lines or reference line). IGNORE all other numbers in the image — title block numbers, part numbers, weight values, drawing border numbers are NOT weld values.
 - Text labels like "BACKWELD", "FAR SIDE", "REF", "TYP" are NOT numeric values — do NOT generate DIMENSION rows for them.
-- No numeric values at all -> 1 NOTE row only. Col D = the exact weld description from the drawing (e.g. "4X BACKWELD", "2X WELDING"). Do NOT invent DISTANCE or SIZE rows.
-- EXAMPLE: "4X BACKWELD" with no numbers -> 1 NOTE row: Col D = "4X BACKWELD", nominalValue = "In Compliance". NO DIMENSION rows.
+- No numeric values on the symbol -> 1 NOTE row only. Col D = exact weld description from drawing (e.g. "4X BACKWELD"). Do NOT invent DISTANCE, SIZE, or PITCH rows from numbers seen elsewhere in the image.
+- EXAMPLE: "4X BACKWELD" symbol with no numbers attached -> 1 NOTE row ONLY: Col D = "4X BACKWELD", nominalValue = "In Compliance". The value 1.750 seen in a title block or elsewhere in the image is NOT a weld dimension.
 - Size only -> NOTE + SIZE(MIN) + SIZE(MAX) = 3 rows
 - Size + distance -> NOTE + SIZE(MIN) + SIZE(MAX) + DISTANCE(MIN) + DISTANCE(MAX) = 5 rows
 - Size + distance + pitch -> NOTE + SIZE(MIN) + SIZE(MAX) + DISTANCE(MIN) + DISTANCE(MAX) + PITCH(MIN) + PITCH(MAX) = 7 rows
