@@ -94,6 +94,7 @@ export default function DrawingTool() {
   const panStartRef = useRef<{ mouseX: number; mouseY: number; scrollLeft: number; scrollTop: number } | null>(null);
 
   // ── Extraction state ──
+  const pendingFromDrawModeRef = useRef(false); // true only when pending set by single-balloon draw mode
   const [pending, setPending] = useState<PendingBalloon | null>(null);
   const [lastCropUrl, setLastCropUrl] = useState<string | null>(null); // persists for right-panel preview
   const [extracting, setExtracting] = useState(false);
@@ -722,6 +723,7 @@ export default function DrawingTool() {
       anchorYPercent,
       cropDataUrl,
     };
+    pendingFromDrawModeRef.current = true; // mark: auto-save is allowed for this pending
     setPending(pend);
     setLastCropUrl(cropDataUrl); // persist for right-panel preview
     setCurrentRect(null);
@@ -1185,9 +1187,10 @@ export default function DrawingTool() {
   })();
 
   useEffect(() => {
-    if (pending) {
+    if (pending && pendingFromDrawModeRef.current) {
+      pendingFromDrawModeRef.current = false; // consume the flag
       setBalloonNumInput(nextBalloonNum);
-      // Auto-save immediately with next balloon number
+      // Auto-save immediately with next balloon number (single-balloon draw mode only)
       saveBalloon(nextBalloonNum);
     }
   }, [pending]);
