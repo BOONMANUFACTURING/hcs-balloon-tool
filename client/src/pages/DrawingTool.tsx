@@ -841,6 +841,12 @@ export default function DrawingTool() {
         nominalValue:   data.nominalValue || "",
       });
       setSelectedBalloonId(balloon.id);
+      // Populate right panel edit fields so it shows the saved balloon correctly
+      setEditRowType(data.rowType     || "DIMENSION");
+      setEditDescription(data.description || "");
+      setEditGdtType(data.gdtType     || "");
+      setEditNominal(data.nominalValue || "");
+      setEditBalloonNum(autoNum);
       setPending(null);
       setExtractResult(null);
       toast({ title: `Balloon B${autoNum} saved`, description: data.description || "" });
