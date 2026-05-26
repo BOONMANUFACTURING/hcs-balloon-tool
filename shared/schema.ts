@@ -11,6 +11,8 @@ export const sessions = sqliteTable("sessions", {
   pdfDataBase64: text("pdf_data_base64").notNull(), // store the PDF as base64
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  // JSON blob: { firPqr, tolerances, toolCalDates }
+  settingsJson: text("settings_json").notNull().default("{}"),
 });
 
 // Individual balloon entries

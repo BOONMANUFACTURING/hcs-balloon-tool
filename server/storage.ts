@@ -46,9 +46,10 @@ sqlite.exec(`
   );
 `);
 
-// Migration: add anchor columns to existing databases (safe to run repeatedly)
+// Migrations: safe to run repeatedly (ALTER TABLE ignores if column exists)
 try { sqlite.exec(`ALTER TABLE balloons ADD COLUMN anchor_x_percent REAL NOT NULL DEFAULT 0`); } catch {}
 try { sqlite.exec(`ALTER TABLE balloons ADD COLUMN anchor_y_percent REAL NOT NULL DEFAULT 0`); } catch {}
+try { sqlite.exec(`ALTER TABLE sessions ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'`); } catch {}
 
 export interface IStorage {
   getAllSessions(): Session[];

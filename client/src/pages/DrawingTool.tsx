@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
   Crosshair, Trash2, Loader2, AlertCircle, CheckCircle2, Info,
-  Maximize2, AlignJustify, List, FileText, StickyNote, Table2, Wrench
+  Maximize2, AlignJustify, List, FileText, StickyNote, Table2, Wrench,
+  Settings, Upload, X as XIcon
 } from "lucide-react";
 import type { Session, Balloon } from "@shared/schema";
 import { GDT_TYPES, STANDARD_NOTES, DIMENSION_TERMS } from "@/lib/amatData";
@@ -113,6 +114,20 @@ export default function DrawingTool() {
   const [editUpperTol, setEditUpperTol] = useState("");
   const [editMaterialCondition, setEditMaterialCondition] = useState("NONE");
 
+  // ── Session Settings panel ──
+  const [showSettings, setShowSettings] = useState(false);
+  // FIR/PQR for Col N — applies to all rows on export
+  const [settingFirPqr, setSettingFirPqr] = useState("PQR");
+  // Tolerance table: decimals → tolerance value
+  const [tolX,    setTolX]    = useState(""); // .X   e.g. 0.030
+  const [tolXX,   setTolXX]   = useState(""); // .XX  e.g. 0.010
+  const [tolXXX,  setTolXXX]  = useState(""); // .XXX e.g. 0.005
+  const [tolXXXX, setTolXXXX] = useState(""); // .XXXX e.g. 0.002
+  // Tool Master List status
+  const [toolMapCount,   setToolMapCount]   = useState(0);
+  const [toolMapLoading, setToolMapLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
   // ── Balloon list ──
   const [selectedBalloonId, setSelectedBalloonId] = useState<number | null>(null);
   const [selectedBalloonIds, setSelectedBalloonIds] = useState<Set<number>>(new Set());
@@ -143,6 +158,76 @@ export default function DrawingTool() {
 
   // Keep ref in sync
   useEffect(() => { balloonsRef.current = balloons; }, [balloons]);
+
+  // Load session settings on open
+  useEffect(() => {
+    if (!sessionId) return;
+    apiRequest("GET", `/api/sessions/${sessionId}/settings`)
+      .then(r => r.json())
+      .then((s: any) => {
+        if (s.firPqr) setSettingFirPqr(s.firPqr);
+        if (s.tolerances) {
+          if (s.tolerances.x)     setTolX(s.tolerances.x);
+          if (s.tolerances.xx)    setTolXX(s.tolerances.xx);
+          if (s.tolerances.xxx)   setTolXXX(s.tolerances.xxx);
+          if (s.tolerances.xxxx)  setTolXXXX(s.tolerances.xxxx);
+        }
+        if (s.toolCalMap) setToolMapCount(Object.keys(s.toolCalMap).length);
+      })
+      .catch(() => {}); // ignore errors silently
+  }, [sessionId]);
+
+  // Helper: auto-fill tolerance from table based on decimal count of a nominal value
+  function autoTolerance(nominal: string): { lower: string; upper: string } {
+    const m = nominal.trim().match(/^-?\d*\.(\d+)$/);
+    if (!m) return { lower: "", upper: "" };
+    const decimals = m[1].length;
+    let tol = "";
+    if (decimals === 1) tol = tolX;
+    else if (decimals === 2) tol = tolXX;
+    else if (decimals === 3) tol = tolXXX;
+    else if (decimals >= 4) tol = tolXXXX;
+    if (!tol) return { lower: "", upper: "" };
+    return { lower: tol, upper: tol };
+  }
+
+  // Save session settings to server
+  async function saveSettings() {
+    setSettingsSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/sessions/${sessionId}/settings`, {
+        firPqr: settingFirPqr,
+        tolerances: { x: tolX, xx: tolXX, xxx: tolXXX, xxxx: tolXXXX },
+      });
+      toast({ title: "Settings saved" });
+      setShowSettings(false);
+    } catch {
+      toast({ title: "Failed to save settings", variant: "destructive" });
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  // Upload Tool Master List Excel
+  async function uploadToolMaster(file: File) {
+    setToolMapLoading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/sessions/${sessionId}/upload-tool-master`, {
+        method: "POST", body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setToolMapCount(data.toolCount);
+      toast({ title: `Tool Master List loaded`, description: `${data.toolCount} tools indexed` });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setToolMapLoading(false);
+    }
+  }
+
 
   const createBalloon = useMutation({
     mutationFn: (data: any) =>
@@ -836,7 +921,12 @@ export default function DrawingTool() {
       setBalloonNumInput(autoNum);
       const autoRowType = data.rowType || "DIMENSION";
       const autoDesc    = data.description || "";
+      const autoNominal = data.nominalValue || "";
       const { tool: autoTool, calibrationDueDate: autoCalDate } = getToolForRow(autoRowType, autoDesc);
+      // Auto-fill H/I from tolerance table
+      const { lower: autoLower, upper: autoUpper } = autoRowType === "NOTE"
+        ? { lower: "", upper: "" }
+        : autoTolerance(autoNominal);
       const balloon = await createBalloon.mutateAsync({
         balloonNumber:     autoNum,
         pageNumber:        pend.pageNumber,
@@ -846,24 +936,24 @@ export default function DrawingTool() {
         anchorYPercent:    pend.anchorYPercent,
         rowType:           autoRowType,
         description:       autoDesc,
-        gdtType:           data.gdtType     || "",
-        nominalValue:      data.nominalValue || "",
-        lowerTolerance:    "",
-        upperTolerance:    "",
+        gdtType:           data.gdtType || "",
+        nominalValue:      autoNominal,
+        lowerTolerance:    autoLower,
+        upperTolerance:    autoUpper,
         materialCondition: "NONE",
         tool:              autoTool,
         calibrationDueDate: autoCalDate,
-        firPqr:            "PQR",
+        firPqr:            settingFirPqr,
       });
       setSelectedBalloonId(balloon.id);
       // Populate right panel edit fields so it shows the saved balloon correctly
       setEditRowType(autoRowType);
       setEditDescription(autoDesc);
-      setEditGdtType(data.gdtType     || "");
-      setEditNominal(data.nominalValue || "");
+      setEditGdtType(data.gdtType || "");
+      setEditNominal(autoNominal);
       setEditBalloonNum(autoNum);
-      setEditLowerTol("");
-      setEditUpperTol("");
+      setEditLowerTol(autoLower);
+      setEditUpperTol(autoUpper);
       setEditMaterialCondition("NONE");
       setPending(null);
       setExtractResult(null);
@@ -888,12 +978,23 @@ export default function DrawingTool() {
   // Save balloon — then auto-return to draw mode
   // ──────────────────────────────────────────────────────────
 
-  // ── Auto-assign tool + calibration date based on rowType and description ──
+  // ── Auto-assign tool based on rowType and description ──
+  // Cal date is left blank here — it gets filled at export time from the Tool Master List
   function getToolForRow(rowType: string, description: string): { tool: string; calibrationDueDate: string } {
     if (rowType === "NOTE") return { tool: "Visual - Visual inspection", calibrationDueDate: "" };
     const desc = (description || "").toUpperCase();
-    if (desc.includes("THICKNESS")) return { tool: "Caliper - 0-300mm", calibrationDueDate: "03/01/2027" };
-    return { tool: "CMM - 8535-6-12609-UC", calibrationDueDate: "03/01/2027" };
+    // Weld-specific tools
+    if (desc.includes("WELD DEPTH"))    return { tool: "WG-QA-01 - WELDING GAGE", calibrationDueDate: "" };
+    if (desc.includes("WELD DISTANCE")) return { tool: "Caliper - 0-300mm",        calibrationDueDate: "" };
+    if (desc.includes("WELD PITCH"))    return { tool: "Caliper - 0-300mm",        calibrationDueDate: "" };
+    if (desc.includes("WELD SIZE"))     return { tool: "Caliper - 0-300mm",        calibrationDueDate: "" };
+    // Thickness → Caliper
+    if (desc.includes("THICKNESS"))     return { tool: "Caliper - 0-300mm",        calibrationDueDate: "" };
+    // Surface roughness
+    if (desc.includes("SURFACE ROUGHNESS") || desc.includes("CUT OF LENGTH"))
+      return { tool: "Surface roughness - Rmax 390 µinch / 9.90 µ", calibrationDueDate: "" };
+    // Default DIMENSION → CMM
+    return { tool: "CMM - 8535-6-12609-UC", calibrationDueDate: "" };
   }
 
   async function saveBalloon(balloonNum: string) {
@@ -1420,6 +1521,18 @@ export default function DrawingTool() {
             <Table2 className="w-4 h-4 mr-1" />Export Excel
           </Button>
 
+          {/* Session Settings */}
+          <Button
+            variant="outline" size="sm"
+            className={`text-xs h-8 ${toolMapCount > 0 ? "border-blue-400 text-blue-700" : ""}`}
+            onClick={() => setShowSettings(v => !v)}
+            title="Session Settings: tolerances, FIR/PQR, Tool Master List"
+            data-testid="button-settings"
+          >
+            <Settings className="w-4 h-4 mr-1" />
+            Settings{toolMapCount > 0 ? ` ✓` : ""}
+          </Button>
+
           {/* Zoom */}
           <div className="flex items-center gap-1 border border-border rounded px-1">
             <Button variant="ghost" size="icon" className="w-7 h-7"
@@ -1510,6 +1623,93 @@ export default function DrawingTool() {
             Add
           </Button>
           <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowNoteForm(false)}>✕</Button>
+        </div>
+      )}
+
+      {/* ── Session Settings Panel ── */}
+      {showSettings && (
+        <div className="border-b border-border bg-card px-4 py-3 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold">Session Settings</span>
+            <button onClick={() => setShowSettings(false)} className="text-muted-foreground hover:text-foreground"><XIcon className="w-4 h-4" /></button>
+          </div>
+
+          <div className="flex flex-wrap gap-6">
+
+            {/* Col N: FIR / PQR */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Col N — FIR / PQR</label>
+              <div className="flex gap-1">
+                {["PQR", "FIR"].map(v => (
+                  <button key={v} onClick={() => setSettingFirPqr(v)}
+                    className={`px-4 py-1 text-xs rounded border font-medium transition-colors ${
+                      settingFirPqr === v
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-foreground border-border hover:bg-secondary"
+                    }`}>{v}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tolerance Table */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">General Tolerance (Col H/I) — from title block</label>
+              <div className="grid grid-cols-4 gap-2">
+                {([
+                  { label: ".X",    val: tolX,    set: setTolX    },
+                  { label: ".XX",   val: tolXX,   set: setTolXX   },
+                  { label: ".XXX",  val: tolXXX,  set: setTolXXX  },
+                  { label: ".XXXX", val: tolXXXX, set: setTolXXXX },
+                ] as { label: string; val: string; set: (v: string) => void }[]).map(({ label, val, set }) => (
+                  <div key={label} className="space-y-0.5">
+                    <div className="text-xs text-center text-muted-foreground font-mono">{label}</div>
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={e => set(e.target.value)}
+                      placeholder="e.g. 0.010"
+                      className="w-full text-xs h-7 px-2 rounded border border-border bg-background text-center font-mono"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">When AI reads a nominal value, H/I are auto-filled from this table based on decimal count.</p>
+            </div>
+
+            {/* Tool Master List Upload */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Tool Master List (Col M cal dates)</label>
+              <div className="flex items-center gap-2">
+                <label className="cursor-pointer">
+                  <input type="file" accept=".xlsx" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadToolMaster(f); e.target.value = ""; }}
+                  />
+                  <span className="inline-flex items-center gap-1 px-3 py-1 text-xs rounded border border-border bg-background hover:bg-secondary font-medium cursor-pointer">
+                    {toolMapLoading
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Upload className="w-3 h-3" />}
+                    Upload Excel
+                  </span>
+                </label>
+                {toolMapCount > 0 && (
+                  <span className="text-xs text-green-700 font-medium">✓ {toolMapCount} tools loaded</span>
+                )}
+                {toolMapCount === 0 && !toolMapLoading && (
+                  <span className="text-xs text-muted-foreground">No file loaded — Col M will be blank on export</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Upload the AMAT Tool Master List Excel. System reads Tool Name + ID → Expiration Date for Col M.</p>
+            </div>
+
+          </div>
+
+          {/* Save button */}
+          <div className="flex justify-end">
+            <Button size="sm" onClick={saveSettings} disabled={settingsSaving}>
+              {settingsSaving ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Save Settings
+            </Button>
+          </div>
         </div>
       )}
 
@@ -1744,6 +1944,13 @@ export default function DrawingTool() {
                     placeholder={editRowType === "NOTE" ? "In Compliance" : "e.g. 0.438"}
                     data-testid="input-nominal"
                     onEnter={() => pending ? saveBalloon(balloonNumInput) : updateSelectedBalloon()}
+                    onChange={(val) => {
+                      setEditNominal(val);
+                      if (editRowType !== "NOTE") {
+                        const { lower, upper } = autoTolerance(val);
+                        if (lower) { setEditLowerTol(lower); setEditUpperTol(upper); }
+                      }
+                    }}
                   />
                 </div>
 

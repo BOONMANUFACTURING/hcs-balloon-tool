@@ -92,6 +92,87 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(updated);
   });
 
+  // Session settings — GET and PATCH the settingsJson blob
+  app.get("/api/sessions/:id/settings", (req, res) => {
+    const session = storage.getSession(Number(req.params.id));
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    try {
+      res.json(JSON.parse(session.settingsJson || "{}"));
+    } catch {
+      res.json({});
+    }
+  });
+
+  app.patch("/api/sessions/:id/settings", (req, res) => {
+    const session = storage.getSession(Number(req.params.id));
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    let current: Record<string, unknown> = {};
+    try { current = JSON.parse(session.settingsJson || "{}"); } catch {}
+    const merged = { ...current, ...req.body };
+    const updated = storage.updateSession(Number(req.params.id), {
+      settingsJson: JSON.stringify(merged),
+      updatedAt: new Date().toISOString(),
+    });
+    if (!updated) return res.status(404).json({ error: "Session not found" });
+    res.json(merged);
+  });
+
+  // Upload Tool Master List Excel → parse into toolCalMap, store in session settings
+  app.post("/api/sessions/:id/upload-tool-master", upload.single("file"), async (req, res) => {
+    const session = storage.getSession(Number(req.params.id));
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+    try {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(req.file.buffer);
+
+      // Find the Tool Master List sheet (by name or first sheet)
+      const ws = wb.getWorksheet("Tool Master List") || wb.worksheets[0];
+      if (!ws) return res.status(400).json({ error: "No worksheet found in uploaded file" });
+
+      // Parse: Col A = Tool Name, Col B = Description/ID, Col C = Expiration Date
+      // Combined key = "Tool Name - Description" (matches _Lists!E format)
+      const toolCalMap: Record<string, string> = {};
+      ws.eachRow((row, rowNumber) => {
+        if (rowNumber < 4) return; // skip header rows
+        const toolName  = String(row.getCell(1).value || "").trim();
+        const descId    = String(row.getCell(2).value || "").trim();
+        const expDate   = row.getCell(3).value;
+        const active    = String(row.getCell(4).value || "").trim();
+        if (!toolName || !descId || !expDate) return;
+        if (active.toLowerCase() === "no") return; // skip inactive tools
+
+        // Format date: exceljs may return Date object or string
+        let dateStr = "";
+        if (expDate instanceof Date) {
+          const m = String(expDate.getMonth() + 1).padStart(2, "0");
+          const d = String(expDate.getDate()).padStart(2, "0");
+          const y = expDate.getFullYear();
+          dateStr = `${m}/${d}/${y}`;
+        } else {
+          dateStr = String(expDate).trim();
+        }
+
+        const key = `${toolName} - ${descId}`;
+        toolCalMap[key] = dateStr;
+      });
+
+      // Merge into existing settings
+      let current: Record<string, unknown> = {};
+      try { current = JSON.parse(session.settingsJson || "{}"); } catch {}
+      const merged = { ...current, toolCalMap };
+      storage.updateSession(Number(req.params.id), {
+        settingsJson: JSON.stringify(merged),
+        updatedAt: new Date().toISOString(),
+      });
+
+      res.json({ ok: true, toolCount: Object.keys(toolCalMap).length, toolCalMap });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.delete("/api/sessions/:id", (req, res) => {
     storage.deleteBalloonsBySession(Number(req.params.id));
     storage.deleteSession(Number(req.params.id));
@@ -505,6 +586,31 @@ Rules:
     const session = storage.getSession(Number(req.params.id));
     if (!session) return res.status(404).json({ error: "Session not found" });
 
+    // Parse session settings
+    let settings: {
+      firPqr?: string;
+      tolerances?: { x?: string; xx?: string; xxx?: string; xxxx?: string };
+      toolCalMap?: Record<string, string>;
+    } = {};
+    try { settings = JSON.parse(session.settingsJson || "{}"); } catch {}
+
+    const sessionFirPqr = settings.firPqr || "PQR";
+    // toolCalMap: keys are exact tool strings e.g. "CMM - 8535-6-12609-UC" -> "03/01/2027"
+    const toolCalMap: Record<string, string> = settings.toolCalMap || {};
+
+    // Helper: look up cal date for a tool string (exact match first, then contains)
+    function getCalDate(toolStr: string): string {
+      if (!toolStr || toolStr.toLowerCase().includes("visual")) return "";
+      // Exact match
+      if (toolCalMap[toolStr]) return toolCalMap[toolStr];
+      // Fallback: find any key that contains the tool string
+      const found = Object.entries(toolCalMap).find(([k]) =>
+        k.toLowerCase().includes(toolStr.toLowerCase()) ||
+        toolStr.toLowerCase().includes(k.toLowerCase())
+      );
+      return found ? found[1] : "";
+    }
+
     const balloons = storage.getBalloonsBySession(Number(req.params.id));
     // Sort by balloon number ascending
     const sorted = [...balloons].sort((a, b) => {
@@ -546,13 +652,13 @@ Rules:
         row.getCell(5).value  = "";                                // Col E: Standard Notes (user fills)
         row.getCell(6).value  = b.gdtType || "";                  // Col F: GD&T Type
         row.getCell(7).value  = b.nominalValue || "";             // Col G: Nominal Value
-        row.getCell(8).value  = b.lowerTolerance || "";           // Col H: Lower Tolerance
-        row.getCell(9).value  = b.upperTolerance || "";            // Col I: Upper Tolerance
-        row.getCell(10).value = b.actualValue || "";               // Col J: Actual Value (user fills)
-        row.getCell(11).value = b.rowType === "NOTE" ? "" : (b.materialCondition || "NONE"); // Col K: Material Condition
-        row.getCell(12).value = b.tool || "";                      // Col L: Tool
-        row.getCell(13).value = b.calibrationDueDate || "";        // Col M: Cal Due Date
-        row.getCell(14).value = b.firPqr || "PQR";                 // Col N: FIR/PQR
+        row.getCell(8).value  = b.lowerTolerance || "";                    // Col H: Lower Tolerance
+        row.getCell(9).value  = b.upperTolerance || "";                     // Col I: Upper Tolerance
+        row.getCell(10).value = b.actualValue || "";                         // Col J: Actual Value (blank for inspector)
+        row.getCell(11).value = b.rowType === "NOTE" ? "" : (b.materialCondition || "NONE"); // Col K
+        row.getCell(12).value = b.tool || "";                               // Col L: Tool
+        row.getCell(13).value = getCalDate(b.tool || "");                   // Col M: Cal Date from session settings
+        row.getCell(14).value = sessionFirPqr;                               // Col N: FIR/PQR from session settings
 
         // Style: Arial 8pt, yellow fill, borders
         for (let c = 1; c <= 14; c++) {
