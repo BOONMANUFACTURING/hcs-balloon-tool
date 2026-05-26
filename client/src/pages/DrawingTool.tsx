@@ -123,9 +123,6 @@ export default function DrawingTool() {
 
   // Keep a live ref to balloons so mouse handlers always see the latest list
   const balloonsRef = useRef<Balloon[]>([]);
-  // Live drag position ref — updated every mousemove for rAF-driven redraw
-  const dragPosRef = useRef<{ xPercent: number; yPercent: number } | null>(null);
-  const rafRef = useRef<number | null>(null);
 
   // ──────────────────────────────────────────────────────────
   // Data queries
@@ -417,8 +414,8 @@ export default function DrawingTool() {
         const rawCx = (liveX / 100) * canvas.width;
         const rawCy = (liveY / 100) * canvas.height;
 
-        // Apply visual destack (skip for dragging/multi-dragging — they follow the mouse)
-        const { cx, cy } = (isDragging || isMultiDragging) ? { cx: rawCx, cy: rawCy } : resolveDrawPos(rawCx, rawCy, b.id);
+        // Apply visual destack (skip for dragging balloon — it follows the mouse)
+        const { cx, cy } = isDragging ? { cx: rawCx, cy: rawCy } : resolveDrawPos(rawCx, rawCy, b.id);
         drawn.push({ id: b.id, cx, cy });
 
         if (!isDragging && b.anchorXPercent && b.anchorYPercent) {
@@ -465,8 +462,6 @@ export default function DrawingTool() {
   // ──────────────────────────────────────────────────────────
 
   function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
-    // Capture pointer so mousemove keeps firing even when cursor leaves the canvas
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
     if (drawMode) {
       const pt = getCanvasXY(e);
       setDrawing(true);
@@ -561,7 +556,13 @@ export default function DrawingTool() {
       const H = overlayRef.current!.height;
       const dx = ((x - dragStartCanvasRef.current.x) / W) * 100;
       const dy = ((y - dragStartCanvasRef.current.y) / H) * 100;
-      setMultiDragDeltas({ dx, dy });
+      // rAF-driven for smooth live redraw
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          setMultiDragDeltas({ dx, dy });
+        });
+      }
       return;
     }
 
@@ -574,14 +575,7 @@ export default function DrawingTool() {
         xPercent: Math.max(0, Math.min(100, (x / W) * 100)),
         yPercent: Math.max(0, Math.min(100, (y / H) * 100)),
       };
-      // Update ref immediately for rAF-driven live redraw
-      dragPosRef.current = newPos;
-      if (rafRef.current === null) {
-        rafRef.current = requestAnimationFrame(() => {
-          rafRef.current = null;
-          setDragPos({ ...dragPosRef.current! });
-        });
-      }
+      setDragPos(newPos);
       return;
     }
 
@@ -1534,9 +1528,7 @@ export default function DrawingTool() {
                 style={{ cursor: cursorStyle, touchAction: "none" }}
                 onMouseDown={onMouseDown}
                 onMouseMove={onMouseMove}
-                onPointerMove={onMouseMove as any}
                 onMouseUp={onMouseUp}
-                onPointerUp={onMouseUp as any}
                 onMouseLeave={onMouseLeave}
                 data-testid="drawing-overlay"
               />
