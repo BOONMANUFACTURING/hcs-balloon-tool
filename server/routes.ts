@@ -365,8 +365,9 @@ Given a cropped image containing one or more weld symbols, extract ALL weld info
 - e.g. 1.5-4 -> DISTANCE=1.5, PITCH=4
 
 == COL D FORMAT ==
-- NOTE rows: preserve drawing wording exactly. Examples:
-  "2X WELDING", "WELDING X 3 SIDES", "2X WELDING AND GRIND FLUSH", "3X WELDING AND GRIND FLUSH"
+- NOTE rows: preserve drawing wording exactly. Col D = exactly what the drawing says.
+  Examples: "2X WELDING", "WELDING X 3 SIDES", "2X WELDING AND GRIND FLUSH", "3X WELDING AND GRIND FLUSH", "4X BACKWELD", "2X BACKWELD"
+  Use the actual weld type name from the drawing (BACKWELD, WELDING, etc.) — never substitute one for another.
 - DIMENSION rows — SINGLE weld (no multiplier on drawing):
   Exact values: "WELD SIZE", "WELD DISTANCE", "WELD PITCH"
   NO prefix of any kind. NO "1X". NO (MIN). NO (MAX). Just the plain name.
@@ -391,7 +392,8 @@ MULTIPLE WELDS (has any multiplier — NX or N SIDES):
 - (MIN) and (MAX) rows required for every DIMENSION type. Two rows per measurement type, same value.
 - CRITICAL: Only create DIMENSION rows if there are actual numeric size/distance/pitch values on the drawing symbol itself.
 - Text labels like "BACKWELD", "FAR SIDE", "REF", "TYP" are NOT numeric values — do NOT generate DIMENSION rows for them.
-- No numeric values at all -> 1 NOTE "{N}X WELDING" only (regardless of any text labels)
+- No numeric values at all -> 1 NOTE row only. Col D = the exact weld description from the drawing (e.g. "4X BACKWELD", "2X WELDING"). Do NOT invent DISTANCE or SIZE rows.
+- EXAMPLE: "4X BACKWELD" with no numbers -> 1 NOTE row: Col D = "4X BACKWELD", nominalValue = "In Compliance". NO DIMENSION rows.
 - Size only -> NOTE + SIZE(MIN) + SIZE(MAX) = 3 rows
 - Size + distance -> NOTE + SIZE(MIN) + SIZE(MAX) + DISTANCE(MIN) + DISTANCE(MAX) = 5 rows
 - Size + distance + pitch -> NOTE + SIZE(MIN) + SIZE(MAX) + DISTANCE(MIN) + DISTANCE(MAX) + PITCH(MIN) + PITCH(MAX) = 7 rows
