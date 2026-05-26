@@ -68,7 +68,7 @@ export default function DrawingTool() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.5);
-  const BALLOON_RADIUS = Math.round(scale * 14); // scales with zoom: 41%→6px, 100%→14px, 177%→25px
+  const BALLOON_RADIUS = Math.round(scale * 18); // scales with zoom: 41%→7px, 100%→18px, 177%→32px
   const [pageRendering, setPageRendering] = useState(false);
 
   // ── Draw-rect state ──
@@ -899,23 +899,25 @@ export default function DrawingTool() {
         return;
       }
 
-      // Place balloons inside the cropped rectangle, stacked downward
+      // Place balloons on left outside edge, stacking bottom to top
       const canvasW = canvasRef.current?.width  || 1000;
       const canvasH = canvasRef.current?.height || 1000;
-      // X position: left edge of the crop rect + small offset
-      const X_PCT   = ((cropRect.x + BALLOON_RADIUS + 4) / canvasW) * 100;
-      // Y start: top of the crop rect + small offset
-      const cropTopPct = ((cropRect.y + BALLOON_RADIUS + 4) / canvasH) * 100;
+      // X position: left outside edge (just inside left border)
+      const X_PCT   = ((BALLOON_RADIUS + 4) / canvasW) * 100;
+      // Y start: bottom of the crop rect, stack upward
+      const cropBottomPct = ((cropRect.y + cropRect.h - BALLOON_RADIUS - 4) / canvasH) * 100;
 
       // Calculate starting number ONCE before the loop
       const existingNumsBom = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       let nextNum = existingNumsBom.length > 0 ? Math.max(...existingNumsBom) + 1 : 1;
 
-      let startY = cropTopPct;
-      for (const row of rows) {
+      // Reverse rows so balloon 1 is at bottom, last is at top
+      const reversedRows = [...rows].reverse();
+      let startY = cropBottomPct;
+      for (const row of reversedRows) {
         const yPct = resolveCollision(X_PCT, startY, canvasW, canvasH);
         await createBalloon.mutateAsync({
-          balloonNumber:  String(nextNum),
+          balloonNumber:  String(nextNum + (rows.indexOf(row))),
           pageNumber:     currentPage,
           xPercent:       X_PCT,
           yPercent:       yPct,
@@ -926,8 +928,7 @@ export default function DrawingTool() {
           gdtType:        "",
           nominalValue:   "",
         });
-        nextNum++;
-        startY = yPct + ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
+        startY = yPct - ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
       }
 
       setBulkResult({ type: "bom", count: rows.length });
