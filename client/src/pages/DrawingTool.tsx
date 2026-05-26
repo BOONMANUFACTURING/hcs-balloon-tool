@@ -899,11 +899,11 @@ export default function DrawingTool() {
         return;
       }
 
-      // Place balloons on left outside edge, stacking bottom to top
+      // Place balloons on left edge of the crop rect, stacking bottom to top
       const canvasW = canvasRef.current?.width  || 1000;
       const canvasH = canvasRef.current?.height || 1000;
-      // X position: left outside edge (just inside left border)
-      const X_PCT   = ((BALLOON_RADIUS + 4) / canvasW) * 100;
+      // X position: just outside the left edge of the dragged rectangle
+      const X_PCT   = ((cropRect.x - BALLOON_RADIUS - 4) / canvasW) * 100;
       // Y start: bottom of the crop rect, stack upward
       const cropBottomPct = ((cropRect.y + cropRect.h - BALLOON_RADIUS - 4) / canvasH) * 100;
 
