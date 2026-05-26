@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* HCS Industrial theme — clean, precise, blue-grey */
+    --background: 210 20% 98%;
+    --foreground: 215 25% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 25% 15%;
+    --primary: 213 75% 35%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 215 25% 25%;
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 15% 50%;
+    --accent: 213 75% 35%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 20% 88%;
+    --input: 210 20% 88%;
+    --ring: 213 75% 35%;
+    --radius: 0.4rem;
+    /* Status colors */
+    --success: 142 71% 35%;
+    --warning: 38 92% 45%;
+  }
+
+  .dark {
+    --background: 215 28% 10%;
+    --foreground: 210 20% 92%;
+    --card: 215 28% 13%;
+    --card-foreground: 210 20% 92%;
+    --popover: 215 28% 13%;
+    --popover-foreground: 210 20% 92%;
+    --primary: 213 75% 55%;
+    --primary-foreground: 215 28% 10%;
+    --secondary: 215 20% 18%;
+    --secondary-foreground: 210 20% 80%;
+    --muted: 215 20% 18%;
+    --muted-foreground: 215 15% 55%;
+    --accent: 213 75% 55%;
+    --accent-foreground: 215 28% 10%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 20% 22%;
+    --input: 215 20% 22%;
+    --ring: 213 75% 55%;
+    --success: 142 71% 45%;
+    --warning: 38 92% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', 'DM Sans', system-ui, sans-serif;
+    font-size: 15px;
+  }
+}
+
+/* PDF Canvas container */
+.pdf-container {
+  position: relative;
+  display: inline-block;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.pdf-container canvas {
+  display: block;
+  /* No max-width — allow canvas to be larger than viewport so user can scroll */
+}
+
+/* Balloon overlay */
+.balloon-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.balloon-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: all;
+  cursor: pointer;
+  z-index: 10;
+}
+
+/* HCS balloon circles — RED so they are clearly distinct from customer pre-printed balloons */
+.balloon-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(220, 30, 30, 0.85);
+  border: 2.5px solid #a00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  white-space: nowrap;
+  min-width: 36px;
+  padding: 0 5px;
+  letter-spacing: -0.5px;
+}
+
+.balloon-circle.selected {
+  background: rgba(180, 0, 0, 0.95);
+  border-color: #600;
+  box-shadow: 0 0 0 3px rgba(220, 30, 30, 0.4), 0 2px 8px rgba(0,0,0,0.35);
+  transform: scale(1.1);
+}
+
+.balloon-circle:hover {
+  background: rgba(200, 20, 20, 0.92);
+  transform: scale(1.12);
+}
+
+/* NOTE type — orange to distinguish from DIMENSION (red) */
+.balloon-circle.note-type {
+  background: rgba(217, 119, 6, 0.88);
+  border-color: #92400e;
+  color: #fff;
+}
+
+.balloon-circle.note-type.selected {
+  background: rgba(180, 90, 0, 0.95);
+  border-color: #5a2800;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.4);
+  transform: scale(1.1);
+}
+
+/* Scrollable panels */
+.panel-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+.panel-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
