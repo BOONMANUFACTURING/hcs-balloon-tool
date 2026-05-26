@@ -1358,6 +1358,18 @@ export default function DrawingTool() {
             <FileText className="w-4 h-4 mr-1" />Note Row
           </Button>
 
+          {/* Export Excel */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs h-8 bg-green-50 border-green-300 text-green-800 hover:bg-green-100"
+            onClick={() => { window.location.href = `/api/sessions/${sessionId}/export-excel`; }}
+            title="Export all balloons to AMAT FAI Excel"
+            data-testid="button-export-excel"
+          >
+            <Table2 className="w-4 h-4 mr-1" />Export Excel
+          </Button>
+
           {/* Zoom */}
           <div className="flex items-center gap-1 border border-border rounded px-1">
             <Button variant="ghost" size="icon" className="w-7 h-7"

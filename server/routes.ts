@@ -5,6 +5,9 @@ import { insertSessionSchema, insertBalloonSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import OpenAI from "openai";
+import ExcelJS from "exceljs";
+import path from "path";
+import fs from "fs";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -494,6 +497,105 @@ Rules:
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Weld extraction failed" });
+    }
+  });
+
+  // ─── Export to Excel ─────────────────────────────────────────────────────────
+  app.get("/api/sessions/:id/export-excel", async (req, res) => {
+    const session = storage.getSession(Number(req.params.id));
+    if (!session) return res.status(404).json({ error: "Session not found" });
+
+    const balloons = storage.getBalloonsBySession(Number(req.params.id));
+    // Sort by balloon number ascending
+    const sorted = [...balloons].sort((a, b) => {
+      const na = parseFloat(a.balloonNumber) || 0;
+      const nb = parseFloat(b.balloonNumber) || 0;
+      return na - nb;
+    });
+
+    // Part number = PDF filename without extension
+    const partNumber = session.pdfFileName.replace(/\.pdf$/i, "");
+    // Export filename = same
+    const exportFileName = partNumber + ".xlsx";
+
+    // Find the template file
+    const templatePath = path.resolve(process.cwd(), "template", "FAI_TEMPLATE.xlsx");
+    if (!fs.existsSync(templatePath)) {
+      return res.status(500).json({ error: "FAI template not found at server/template/FAI_TEMPLATE.xlsx" });
+    }
+
+    try {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.readFile(templatePath);
+
+      const ws = wb.getWorksheet("Notes & Dimensions");
+      if (!ws) return res.status(500).json({ error: "'Notes & Dimensions' sheet not found in template" });
+
+      // Clear existing data rows (row 6 onwards) — keep headers rows 1-5
+      const lastRow = ws.rowCount;
+      for (let r = lastRow; r >= 6; r--) {
+        ws.spliceRows(r, 1);
+      }
+
+      // Write balloon rows starting at row 6
+      sorted.forEach((b, i) => {
+        const rowNum = 6 + i;
+        const row = ws.getRow(rowNum);
+
+        // Copy style from template row 6 (first data row style)
+        // Col A: Part Number (PDF filename without .pdf)
+        row.getCell(1).value = partNumber;
+        // Col B: Row Type
+        row.getCell(2).value = b.rowType || "DIMENSION";
+        // Col C: Feature Number = balloon number
+        row.getCell(3).value = b.balloonNumber;
+        // Col D: Description
+        row.getCell(4).value = b.description || "";
+        // Col E: Standard Notes (NOTE rows only) — leave blank, user fills
+        row.getCell(5).value = "";
+        // Col F: GD&T Type
+        row.getCell(6).value = b.gdtType || "";
+        // Col G: Nominal Value
+        row.getCell(7).value = b.nominalValue || "";
+        // Col H: Lower Tolerance — leave blank
+        row.getCell(8).value = "";
+        // Col I: Upper Tolerance — leave blank
+        row.getCell(9).value = "";
+        // Col J: Actual Value — leave blank
+        row.getCell(10).value = "";
+        // Col K: Material Condition — leave blank
+        row.getCell(11).value = "";
+        // Col L: Tool
+        row.getCell(12).value = (b as any).tool || "";
+        // Col M: Calibration Due Date
+        row.getCell(13).value = (b as any).calibrationDueDate || "";
+        // Col N: FIR/PQR — leave blank
+        row.getCell(14).value = "";
+
+        // Apply same font/fill as original data rows (Arial 8pt, yellow fill FFFFFACD)
+        for (let c = 1; c <= 14; c++) {
+          const cell = row.getCell(c);
+          cell.font = { name: "Arial", size: 8 };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFACD" } };
+          cell.alignment = { vertical: "middle", wrapText: true };
+          cell.border = {
+            top:    { style: "thin", color: { argb: "FF000000" } },
+            bottom: { style: "thin", color: { argb: "FF000000" } },
+            left:   { style: "thin", color: { argb: "FF000000" } },
+            right:  { style: "thin", color: { argb: "FF000000" } },
+          };
+        }
+        row.height = 30;
+        row.commit();
+      });
+
+      // Stream the file back
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${exportFileName}"`);
+      await wb.xlsx.write(res);
+      res.end();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Export failed" });
     }
   });
 
