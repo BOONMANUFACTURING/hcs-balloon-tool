@@ -1184,7 +1184,13 @@ export default function DrawingTool() {
     return nums.length > 0 ? String(Math.max(...nums) + 1) : "1";
   })();
 
-  useEffect(() => { if (pending) setBalloonNumInput(nextBalloonNum); }, [pending]);
+  useEffect(() => {
+    if (pending) {
+      setBalloonNumInput(nextBalloonNum);
+      // Auto-save immediately with next balloon number
+      saveBalloon(nextBalloonNum);
+    }
+  }, [pending]);
 
   // ── Quick-add form state ──
   const [showBomForm,  setShowBomForm]  = useState(false);
