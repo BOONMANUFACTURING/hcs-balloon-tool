@@ -531,54 +531,36 @@ Rules:
       const ws = wb.getWorksheet("Notes & Dimensions");
       if (!ws) return res.status(500).json({ error: "'Notes & Dimensions' sheet not found in template" });
 
-      // Clear existing data rows (row 6 onwards) — keep headers rows 1-5
+      const DATA_START = 6;  // first data row
       const lastRow = ws.rowCount;
-      for (let r = lastRow; r >= 6; r--) {
-        ws.spliceRows(r, 1);
-      }
 
-      // Write balloon rows starting at row 6
+      // Overwrite existing rows (preserves data validations on those rows)
       sorted.forEach((b, i) => {
-        const rowNum = 6 + i;
+        const rowNum = DATA_START + i;
         const row = ws.getRow(rowNum);
 
-        // Copy style from template row 6 (first data row style)
-        // Col A: Part Number (PDF filename without .pdf)
-        row.getCell(1).value = partNumber;
-        // Col B: Row Type
-        row.getCell(2).value = b.rowType || "DIMENSION";
-        // Col C: Feature Number = balloon number
-        row.getCell(3).value = b.balloonNumber;
-        // Col D: Description
-        row.getCell(4).value = b.description || "";
-        // Col E: Standard Notes (NOTE rows only) — leave blank, user fills
-        row.getCell(5).value = "";
-        // Col F: GD&T Type
-        row.getCell(6).value = b.gdtType || "";
-        // Col G: Nominal Value
-        row.getCell(7).value = b.nominalValue || "";
-        // Col H: Lower Tolerance — leave blank
-        row.getCell(8).value = "";
-        // Col I: Upper Tolerance — leave blank
-        row.getCell(9).value = "";
-        // Col J: Actual Value — leave blank
-        row.getCell(10).value = "";
-        // Col K: Material Condition — leave blank
-        row.getCell(11).value = "";
-        // Col L: Tool
-        row.getCell(12).value = (b as any).tool || "";
-        // Col M: Calibration Due Date
-        row.getCell(13).value = (b as any).calibrationDueDate || "";
-        // Col N: FIR/PQR — leave blank
-        row.getCell(14).value = "";
+        row.getCell(1).value  = partNumber;                        // Col A: Part Number
+        row.getCell(2).value  = b.rowType || "DIMENSION";          // Col B: Row Type
+        row.getCell(3).value  = b.balloonNumber;                   // Col C: Feature Number
+        row.getCell(4).value  = b.description || "";              // Col D: Description
+        row.getCell(5).value  = "";                                // Col E: Standard Notes (user fills)
+        row.getCell(6).value  = b.gdtType || "";                  // Col F: GD&T Type
+        row.getCell(7).value  = b.nominalValue || "";             // Col G: Nominal Value
+        row.getCell(8).value  = b.lowerTolerance || "";           // Col H: Lower Tolerance
+        row.getCell(9).value  = b.upperTolerance || "";            // Col I: Upper Tolerance
+        row.getCell(10).value = b.actualValue || "";               // Col J: Actual Value (user fills)
+        row.getCell(11).value = b.rowType === "NOTE" ? "" : (b.materialCondition || "NONE"); // Col K: Material Condition
+        row.getCell(12).value = b.tool || "";                      // Col L: Tool
+        row.getCell(13).value = b.calibrationDueDate || "";        // Col M: Cal Due Date
+        row.getCell(14).value = b.firPqr || "PQR";                 // Col N: FIR/PQR
 
-        // Apply same font/fill as original data rows (Arial 8pt, yellow fill FFFFFACD)
+        // Style: Arial 8pt, yellow fill, borders
         for (let c = 1; c <= 14; c++) {
           const cell = row.getCell(c);
-          cell.font = { name: "Arial", size: 8 };
-          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFACD" } };
+          cell.font      = { name: "Arial", size: 8 };
+          cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFACD" } };
           cell.alignment = { vertical: "middle", wrapText: true };
-          cell.border = {
+          cell.border    = {
             top:    { style: "thin", color: { argb: "FF000000" } },
             bottom: { style: "thin", color: { argb: "FF000000" } },
             left:   { style: "thin", color: { argb: "FF000000" } },
@@ -588,6 +570,25 @@ Rules:
         row.height = 30;
         row.commit();
       });
+
+      // Clear leftover rows beyond balloon count (blank them out, keep formatting)
+      for (let r = DATA_START + sorted.length; r <= lastRow; r++) {
+        const row = ws.getRow(r);
+        for (let c = 1; c <= 14; c++) row.getCell(c).value = null;
+        row.commit();
+      }
+
+      // Ensure Col E dropdown exists (_Lists!$C$1:$C$33 = Standard Notes)
+      // ExcelJS preserves existing validations on rows 6+ since we didn't splice
+      // Add it explicitly in case it was missing from the template
+      const hasDvE = ws.dataValidations.model["E6"];
+      if (!hasDvE) {
+        ws.dataValidations.add("E6:E505", {
+          type: "list",
+          allowBlank: true,
+          formulae: ["_Lists!$C$1:$C$33"],
+        });
+      }
 
       // Stream the file back
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

@@ -109,6 +109,9 @@ export default function DrawingTool() {
   const [editGdtType, setEditGdtType] = useState("");
   const [editNominal, setEditNominal] = useState("");
   const [editBalloonNum, setEditBalloonNum] = useState("");
+  const [editLowerTol, setEditLowerTol] = useState("");
+  const [editUpperTol, setEditUpperTol] = useState("");
+  const [editMaterialCondition, setEditMaterialCondition] = useState("NONE");
 
   // ── Balloon list ──
   const [selectedBalloonId, setSelectedBalloonId] = useState<number | null>(null);
@@ -511,6 +514,9 @@ export default function DrawingTool() {
       setEditGdtType(hit.gdtType);
       setEditNominal(hit.nominalValue);
       setEditBalloonNum(hit.balloonNumber);
+      setEditLowerTol((hit as any).lowerTolerance || "");
+      setEditUpperTol((hit as any).upperTolerance || "");
+      setEditMaterialCondition((hit as any).materialCondition || "NONE");
       setPending(null);
 
       // If clicking a balloon that's part of multi-select, start multi-drag
@@ -828,25 +834,37 @@ export default function DrawingTool() {
       const nums = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       const autoNum = nums.length > 0 ? String(Math.max(...nums) + 1) : "1";
       setBalloonNumInput(autoNum);
+      const autoRowType = data.rowType || "DIMENSION";
+      const autoDesc    = data.description || "";
+      const { tool: autoTool, calibrationDueDate: autoCalDate } = getToolForRow(autoRowType, autoDesc);
       const balloon = await createBalloon.mutateAsync({
-        balloonNumber:  autoNum,
-        pageNumber:     pend.pageNumber,
-        xPercent:       pend.xPercent,
-        yPercent:       pend.yPercent,
-        anchorXPercent: pend.anchorXPercent,
-        anchorYPercent: pend.anchorYPercent,
-        rowType:        data.rowType     || "DIMENSION",
-        description:    data.description || "",
-        gdtType:        data.gdtType     || "",
-        nominalValue:   data.nominalValue || "",
+        balloonNumber:     autoNum,
+        pageNumber:        pend.pageNumber,
+        xPercent:          pend.xPercent,
+        yPercent:          pend.yPercent,
+        anchorXPercent:    pend.anchorXPercent,
+        anchorYPercent:    pend.anchorYPercent,
+        rowType:           autoRowType,
+        description:       autoDesc,
+        gdtType:           data.gdtType     || "",
+        nominalValue:      data.nominalValue || "",
+        lowerTolerance:    "",
+        upperTolerance:    "",
+        materialCondition: "NONE",
+        tool:              autoTool,
+        calibrationDueDate: autoCalDate,
+        firPqr:            "PQR",
       });
       setSelectedBalloonId(balloon.id);
       // Populate right panel edit fields so it shows the saved balloon correctly
-      setEditRowType(data.rowType     || "DIMENSION");
-      setEditDescription(data.description || "");
+      setEditRowType(autoRowType);
+      setEditDescription(autoDesc);
       setEditGdtType(data.gdtType     || "");
       setEditNominal(data.nominalValue || "");
       setEditBalloonNum(autoNum);
+      setEditLowerTol("");
+      setEditUpperTol("");
+      setEditMaterialCondition("NONE");
       setPending(null);
       setExtractResult(null);
       toast({ title: `Balloon B${autoNum} saved`, description: data.description || "" });
@@ -858,6 +876,9 @@ export default function DrawingTool() {
       setEditGdtType("");
       setEditNominal("");
       setEditBalloonNum("");
+      setEditLowerTol("");
+      setEditUpperTol("");
+      setEditMaterialCondition("NONE");
     } finally {
       setExtracting(false);
     }
@@ -867,19 +888,35 @@ export default function DrawingTool() {
   // Save balloon — then auto-return to draw mode
   // ──────────────────────────────────────────────────────────
 
+  // ── Auto-assign tool + calibration date based on rowType and description ──
+  function getToolForRow(rowType: string, description: string): { tool: string; calibrationDueDate: string } {
+    if (rowType === "NOTE") return { tool: "Visual - Visual inspection", calibrationDueDate: "" };
+    const desc = (description || "").toUpperCase();
+    if (desc.includes("THICKNESS")) return { tool: "Caliper - 0-300mm", calibrationDueDate: "03/01/2027" };
+    return { tool: "CMM - 8535-6-12609-UC", calibrationDueDate: "03/01/2027" };
+  }
+
   async function saveBalloon(balloonNum: string) {
     if (!pending) return;
+    const rType = editRowType || "DIMENSION";
+    const { tool, calibrationDueDate } = getToolForRow(rType, editDescription);
     const data = {
-      balloonNumber:   balloonNum,
-      pageNumber:      pending.pageNumber,
-      xPercent:        pending.xPercent,
-      yPercent:        pending.yPercent,
-      anchorXPercent:  pending.anchorXPercent,
-      anchorYPercent:  pending.anchorYPercent,
-      rowType:         editRowType || "DIMENSION",
-      description:     editDescription,
-      gdtType:         editGdtType,
-      nominalValue:    editNominal,
+      balloonNumber:        balloonNum,
+      pageNumber:           pending.pageNumber,
+      xPercent:             pending.xPercent,
+      yPercent:             pending.yPercent,
+      anchorXPercent:       pending.anchorXPercent,
+      anchorYPercent:       pending.anchorYPercent,
+      rowType:              rType,
+      description:          editDescription,
+      gdtType:              editGdtType,
+      nominalValue:         editNominal,
+      lowerTolerance:       editLowerTol,
+      upperTolerance:       editUpperTol,
+      materialCondition:    editMaterialCondition || "NONE",
+      tool,
+      calibrationDueDate,
+      firPqr:               "PQR",
     };
     const balloon = await createBalloon.mutateAsync(data);
     setSelectedBalloonId(balloon.id);
@@ -892,9 +929,22 @@ export default function DrawingTool() {
 
   async function updateSelectedBalloon() {
     if (!selectedBalloonId) return;
+    const { tool, calibrationDueDate } = getToolForRow(editRowType, editDescription);
     await updateBalloon.mutateAsync({
       id: selectedBalloonId,
-      data: { rowType: editRowType, description: editDescription, gdtType: editGdtType, nominalValue: editNominal, balloonNumber: editBalloonNum },
+      data: {
+        rowType: editRowType,
+        description: editDescription,
+        gdtType: editGdtType,
+        nominalValue: editNominal,
+        balloonNumber: editBalloonNum,
+        lowerTolerance: editLowerTol,
+        upperTolerance: editUpperTol,
+        materialCondition: editMaterialCondition || "NONE",
+        tool,
+        calibrationDueDate,
+        firPqr: "PQR",
+      },
     });
     toast({ title: `Balloon B${editBalloonNum} updated` });
   }
@@ -1116,15 +1166,15 @@ export default function DrawingTool() {
           yPercent:       yPct,
           anchorXPercent: anchorXPct,
           anchorYPercent: yPct,
-          rowType:        row.rowType,
-          description:    row.description,
-          gdtType:        row.gdtType || "",
-          nominalValue:   row.nominalValue || "",
-          // Auto-assign tool + cal date for weld rows based on rowType
-          tool:                row.rowType === "NOTE"
-                                 ? "Visual - Visual inspection"
-                                 : "Caliper - 0-300mm",
-          calibrationDueDate:  row.rowType === "NOTE" ? "" : "03/01/2027",
+          rowType:           row.rowType,
+          description:       row.description,
+          gdtType:           row.gdtType || "",
+          nominalValue:      row.nominalValue || "",
+          lowerTolerance:    "",
+          upperTolerance:    "",
+          materialCondition: "NONE",
+          firPqr:            "PQR",
+          ...getToolForRow(row.rowType, row.description),
         });
         nextNum++;
         startY = yPct + ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
@@ -1491,6 +1541,9 @@ export default function DrawingTool() {
                   setEditDescription(b.description);
                   setEditGdtType(b.gdtType);
                   setEditNominal(b.nominalValue);
+                  setEditLowerTol((b as any).lowerTolerance || "");
+                  setEditUpperTol((b as any).upperTolerance || "");
+                  setEditMaterialCondition((b as any).materialCondition || "NONE");
                   setPending(null);
                 }}
                 data-testid={`balloon-item-${b.id}`}
@@ -1693,6 +1746,53 @@ export default function DrawingTool() {
                     onEnter={() => pending ? saveBalloon(balloonNumInput) : updateSelectedBalloon()}
                   />
                 </div>
+
+                {/* Col H + I — Tolerances (side by side) */}
+                <div className="flex gap-2">
+                  <div className="space-y-1 flex-1">
+                    <label className="text-xs text-muted-foreground">Col H — Lower Tol</label>
+                    <input
+                      type="text"
+                      value={editLowerTol}
+                      onChange={e => setEditLowerTol(e.target.value)}
+                      placeholder="e.g. -0.010"
+                      className="w-full text-xs h-8 px-2 rounded border border-border bg-background text-foreground"
+                      data-testid="input-lower-tol"
+                    />
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <label className="text-xs text-muted-foreground">Col I — Upper Tol</label>
+                    <input
+                      type="text"
+                      value={editUpperTol}
+                      onChange={e => setEditUpperTol(e.target.value)}
+                      placeholder="e.g. +0.010"
+                      className="w-full text-xs h-8 px-2 rounded border border-border bg-background text-foreground"
+                      data-testid="input-upper-tol"
+                    />
+                  </div>
+                </div>
+
+                {/* Col K — Material Condition (DIMENSION only) */}
+                {editRowType !== "NOTE" && (
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Col K — Material Condition</label>
+                    <div className="flex gap-1">
+                      {["NONE", "MMC", "LMC", "RFS"].map(mc => (
+                        <button
+                          key={mc}
+                          onClick={() => setEditMaterialCondition(mc)}
+                          className={`flex-1 text-xs py-1 rounded border font-medium transition-colors ${
+                            editMaterialCondition === mc
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background text-foreground border-border hover:bg-secondary"
+                          }`}
+                          data-testid={`button-mc-${mc.toLowerCase()}`}
+                        >{mc}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="border-t border-border p-3 space-y-2 flex-shrink-0">
