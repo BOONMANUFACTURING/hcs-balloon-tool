@@ -426,7 +426,7 @@ export default function DrawingTool() {
           isDragging
         );
       });
-  }, [balloons, currentPage, currentRect, pending, selectedBalloonId, draggingBalloonId, dragPos, BALLOON_RADIUS]);
+  }, [balloons, currentPage, currentRect, pending, selectedBalloonId, selectedBalloonIds, draggingBalloonId, dragPos, scale, BALLOON_RADIUS]);
 
   useEffect(() => { drawOverlay(); }, [drawOverlay]);
 
