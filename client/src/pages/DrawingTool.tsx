@@ -1589,7 +1589,7 @@ export default function DrawingTool() {
             </div>
           )}
 
-          {!extracting && (extractResult || pending) && (
+          {!extracting && (extractResult || pending || selectedBalloonId) && (
             <div className="flex-1 overflow-y-auto flex flex-col">
 
               {(pending?.cropDataUrl || lastCropUrl) && (
