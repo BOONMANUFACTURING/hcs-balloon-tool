@@ -123,6 +123,9 @@ export default function DrawingTool() {
 
   // Keep a live ref to balloons so mouse handlers always see the latest list
   const balloonsRef = useRef<Balloon[]>([]);
+  // Live drag position ref — updated every mousemove for rAF-driven redraw
+  const dragPosRef = useRef<{ xPercent: number; yPercent: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   // ──────────────────────────────────────────────────────────
   // Data queries
@@ -556,7 +559,13 @@ export default function DrawingTool() {
       const H = overlayRef.current!.height;
       const dx = ((x - dragStartCanvasRef.current.x) / W) * 100;
       const dy = ((y - dragStartCanvasRef.current.y) / H) * 100;
-      setMultiDragDeltas({ dx, dy });
+      // rAF-driven for smooth live redraw
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          setMultiDragDeltas({ dx, dy });
+        });
+      }
       return;
     }
 
@@ -569,7 +578,14 @@ export default function DrawingTool() {
         xPercent: Math.max(0, Math.min(100, (x / W) * 100)),
         yPercent: Math.max(0, Math.min(100, (y / H) * 100)),
       };
-      setDragPos(newPos);
+      // Update ref immediately for rAF-driven live redraw
+      dragPosRef.current = newPos;
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          setDragPos({ ...dragPosRef.current! });
+        });
+      }
       return;
     }
 
