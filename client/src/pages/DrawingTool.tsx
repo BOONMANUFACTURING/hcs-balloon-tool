@@ -84,6 +84,9 @@ export default function DrawingTool() {
   const dragStartPercentRef = useRef<{ xPercent: number; yPercent: number } | null>(null);
   const [draggingBalloonId, setDraggingBalloonId] = useState<number | null>(null);
   const [dragPos, setDragPos] = useState<{ xPercent: number; yPercent: number } | null>(null);
+  // Multi-drag: store original positions of all selected balloons at drag start
+  const multiDragStartRef = useRef<Map<number, { xPercent: number; yPercent: number }> | null>(null);
+  const [multiDragDeltas, setMultiDragDeltas] = useState<{ dx: number; dy: number } | null>(null);
 
   // ── Pan state (refs for sync access in mouse handlers) ──
   const [panning, setPanning] = useState(false);
@@ -401,8 +404,13 @@ export default function DrawingTool() {
       .forEach(b => {
         const isDragging = b.id === draggingBalloonId;
         const isSelected = b.id === selectedBalloonId || selectedBalloonIds.has(b.id);
-        const liveX = isDragging && dragPos ? dragPos.xPercent : b.xPercent;
-        const liveY = isDragging && dragPos ? dragPos.yPercent : b.yPercent;
+        const isMultiDragging = multiDragDeltas && selectedBalloonIds.has(b.id);
+        const liveX = isDragging && dragPos ? dragPos.xPercent
+          : isMultiDragging ? b.xPercent + multiDragDeltas!.dx
+          : b.xPercent;
+        const liveY = isDragging && dragPos ? dragPos.yPercent
+          : isMultiDragging ? b.yPercent + multiDragDeltas!.dy
+          : b.yPercent;
         const rawCx = (liveX / 100) * canvas.width;
         const rawCy = (liveY / 100) * canvas.height;
 
@@ -426,7 +434,7 @@ export default function DrawingTool() {
           isDragging
         );
       });
-  }, [balloons, currentPage, currentRect, pending, selectedBalloonId, selectedBalloonIds, draggingBalloonId, dragPos, scale, BALLOON_RADIUS]);
+  }, [balloons, currentPage, currentRect, pending, selectedBalloonId, selectedBalloonIds, draggingBalloonId, dragPos, multiDragDeltas, scale, BALLOON_RADIUS]);
 
   useEffect(() => { drawOverlay(); }, [drawOverlay]);
 
@@ -478,6 +486,7 @@ export default function DrawingTool() {
     if (hit) {
       // Multi-select with Shift or Ctrl
       if (e.shiftKey || e.ctrlKey) {
+        setSelectedBalloonId(null); // clear single select
         setSelectedBalloonIds(prev => {
           const next = new Set(prev);
           if (next.has(hit.id)) { next.delete(hit.id); } else { next.add(hit.id); }
@@ -504,7 +513,18 @@ export default function DrawingTool() {
       setEditBalloonNum(hit.balloonNumber);
       setPending(null);
 
-      // Start drag via refs (sync — no stale-closure issue)
+      // If clicking a balloon that's part of multi-select, start multi-drag
+      if (selectedBalloonIds.has(hit.id) && selectedBalloonIds.size > 1) {
+        dragStartCanvasRef.current = { x, y };
+        const startMap = new Map<number, { xPercent: number; yPercent: number }>();
+        balloonsRef.current.filter(b => selectedBalloonIds.has(b.id)).forEach(b => {
+          startMap.set(b.id, { xPercent: b.xPercent, yPercent: b.yPercent });
+        });
+        multiDragStartRef.current = startMap;
+        setMultiDragDeltas({ dx: 0, dy: 0 });
+        return;
+      }
+      // Single balloon drag
       draggingBalloonIdRef.current  = hit.id;
       dragStartCanvasRef.current    = { x, y };
       dragStartPercentRef.current   = { xPercent: hit.xPercent, yPercent: hit.yPercent };
@@ -529,7 +549,18 @@ export default function DrawingTool() {
       return;
     }
 
-    // Balloon drag — use refs to avoid stale-closure on draggingBalloonId
+    // Multi-balloon drag
+    if (multiDragStartRef.current && dragStartCanvasRef.current) {
+      const { x, y } = getCanvasXY(e);
+      const W = overlayRef.current!.width;
+      const H = overlayRef.current!.height;
+      const dx = ((x - dragStartCanvasRef.current.x) / W) * 100;
+      const dy = ((y - dragStartCanvasRef.current.y) / H) * 100;
+      setMultiDragDeltas({ dx, dy });
+      return;
+    }
+
+    // Single balloon drag — use refs to avoid stale-closure on draggingBalloonId
     if (draggingBalloonIdRef.current !== null) {
       const { x, y } = getCanvasXY(e);
       const W = overlayRef.current!.width;
@@ -563,7 +594,28 @@ export default function DrawingTool() {
       return;
     }
 
-    // Finish balloon drag
+    // Finish multi-drag
+    if (multiDragStartRef.current && multiDragDeltas) {
+      const startMap = multiDragStartRef.current;
+      const { dx, dy } = multiDragDeltas;
+      multiDragStartRef.current = null;
+      dragStartCanvasRef.current = null;
+      setMultiDragDeltas(null);
+      for (const [id, start] of startMap) {
+        await updateBalloon.mutateAsync({
+          id,
+          data: {
+            xPercent: Math.max(0, Math.min(100, start.xPercent + dx)),
+            yPercent: Math.max(0, Math.min(100, start.yPercent + dy)),
+            anchorXPercent: Math.max(0, Math.min(100, start.xPercent + dx)),
+            anchorYPercent: Math.max(0, Math.min(100, start.yPercent + dy)),
+          },
+        });
+      }
+      return;
+    }
+
+    // Finish single balloon drag
     if (draggingBalloonIdRef.current !== null && dragPos) {
       const id       = draggingBalloonIdRef.current;
       const pos      = dragPos;
@@ -688,6 +740,12 @@ export default function DrawingTool() {
       setPanning(false);
     }
     if (drawing) { setDrawing(false); setCurrentRect(null); setStartPt(null); }
+    // Cancel multi-drag on leave
+    if (multiDragStartRef.current) {
+      multiDragStartRef.current = null;
+      dragStartCanvasRef.current = null;
+      setMultiDragDeltas(null);
+    }
     if (draggingBalloonIdRef.current !== null && dragPos) {
       const id       = draggingBalloonIdRef.current;
       const pos      = dragPos;
