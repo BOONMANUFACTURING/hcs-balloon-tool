@@ -68,7 +68,7 @@ export default function DrawingTool() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.5);
-  const BALLOON_RADIUS = Math.round(scale * 9); // scales with zoom: 41%→4px, 100%→9px, 177%→16px
+  const BALLOON_RADIUS = Math.round(scale * 14); // scales with zoom: 41%→6px, 100%→14px, 177%→25px
   const [pageRendering, setPageRendering] = useState(false);
 
   // ── Draw-rect state ──
@@ -899,16 +899,19 @@ export default function DrawingTool() {
         return;
       }
 
-      // Place balloons on LEFT edge, stacked downward
+      // Place balloons inside the cropped rectangle, stacked downward
       const canvasW = canvasRef.current?.width  || 1000;
       const canvasH = canvasRef.current?.height || 1000;
-      const X_PCT   = 4; // left edge ~4% from left
+      // X position: left edge of the crop rect + small offset
+      const X_PCT   = ((cropRect.x + BALLOON_RADIUS + 4) / canvasW) * 100;
+      // Y start: top of the crop rect + small offset
+      const cropTopPct = ((cropRect.y + BALLOON_RADIUS + 4) / canvasH) * 100;
 
       // Calculate starting number ONCE before the loop
       const existingNumsBom = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       let nextNum = existingNumsBom.length > 0 ? Math.max(...existingNumsBom) + 1 : 1;
 
-      let startY = 5;
+      let startY = cropTopPct;
       for (const row of rows) {
         const yPct = resolveCollision(X_PCT, startY, canvasW, canvasH);
         await createBalloon.mutateAsync({
