@@ -345,8 +345,11 @@ Given a cropped image containing one or more weld symbols, extract ALL weld info
   * Example: 2X + horizontal line + size .18 -> NOTE Col D = "2X WELDING FLUSH"
   * Does NOT add "AND GRIND FLUSH" — only G letter = Grind Flush
 - Triangle with number inside = IGNORE (drawing notes reference, not a weld symbol)
-- Circle with number inside = BOM Item Number (1 NOTE row: "ITEM {n}, {full text as-is}")
-  * Example: ⑲ with text "2X REF FAR SIDE" → Col D: "ITEM 19, 2X REF FAR SIDE"
+- Circle with number inside = BOM Item Number (1 NOTE row: Col D = "ITEM {n}, {full text as-is}")
+  * CRITICAL: Col D MUST start with "ITEM {n}, " — NEVER drop the item number prefix
+  * Example: circle \(17\) with text "4X FAR SIDE" → Col D: "ITEM 17, 4X FAR SIDE"
+  * Example: circle \(19\) with text "2X REF FAR SIDE" → Col D: "ITEM 19, 2X REF FAR SIDE"
+  * Example: circle \(6\) with text "SEE DETAIL 6 SH 4" → Col D: "ITEM 6, SEE DETAIL 6 SHEET 4"
   * REF annotations, FAR SIDE, multipliers — include everything verbatim after the item number
   * Tool: Draw Balloon manually — do NOT use Extract Weld for these
 
