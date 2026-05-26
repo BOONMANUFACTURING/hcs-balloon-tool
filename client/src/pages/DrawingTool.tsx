@@ -109,6 +109,7 @@ export default function DrawingTool() {
 
   // ── Balloon list ──
   const [selectedBalloonId, setSelectedBalloonId] = useState<number | null>(null);
+  const [selectedBalloonIds, setSelectedBalloonIds] = useState<Set<number>>(new Set());
   const [balloonNumInput, setBalloonNumInput] = useState("");
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -277,9 +278,16 @@ export default function DrawingTool() {
       else if (e.key === "-")              { e.preventDefault(); setScale(s => parseFloat(Math.max(0.1, s - 0.1).toFixed(2))); }
       else if (e.key === "0")              { e.preventDefault(); fitToPage(); }
       else if (e.key === "f" || e.key === "F") { e.preventDefault(); fitToWidth(); }
-      else if ((e.key === "Delete" || e.key === "Backspace") && selectedBalloonId) {
+      else if ((e.key === "Delete" || e.key === "Backspace") && (selectedBalloonId || selectedBalloonIds.size > 0)) {
         e.preventDefault();
-        deleteBalloon.mutate(selectedBalloonId);
+        if (selectedBalloonIds.size > 0) {
+          // Delete all selected
+          for (const id of selectedBalloonIds) { deleteBalloon.mutate(id); }
+          setSelectedBalloonIds(new Set());
+          setSelectedBalloonId(null);
+        } else if (selectedBalloonId) {
+          deleteBalloon.mutate(selectedBalloonId);
+        }
       }
     }
     window.addEventListener("keydown", onKey);
@@ -392,7 +400,7 @@ export default function DrawingTool() {
       .sort((a, b) => a.yPercent - b.yPercent) // top-to-bottom ordering for destack
       .forEach(b => {
         const isDragging = b.id === draggingBalloonId;
-        const isSelected = b.id === selectedBalloonId;
+        const isSelected = b.id === selectedBalloonId || selectedBalloonIds.has(b.id);
         const liveX = isDragging && dragPos ? dragPos.xPercent : b.xPercent;
         const liveY = isDragging && dragPos ? dragPos.yPercent : b.yPercent;
         const rawCx = (liveX / 100) * canvas.width;
@@ -468,6 +476,17 @@ export default function DrawingTool() {
     });
 
     if (hit) {
+      // Multi-select with Shift or Ctrl
+      if (e.shiftKey || e.ctrlKey) {
+        setSelectedBalloonIds(prev => {
+          const next = new Set(prev);
+          if (next.has(hit.id)) { next.delete(hit.id); } else { next.add(hit.id); }
+          return next;
+        });
+        return;
+      }
+      // Single select — clear multi-select
+      setSelectedBalloonIds(new Set());
       // Populate right panel
       setSelectedBalloonId(hit.id);
       setExtractResult({
@@ -611,7 +630,7 @@ export default function DrawingTool() {
       setCurrentRect(null);
       setStartPt(null);
       setDrawMode(false);
-      await runBulkNotesExtract(cropDataUrl);
+      await runBulkNotesExtract(cropDataUrl, currentRect);
       return;
     }
     if (drawMode === "bom") {
@@ -805,7 +824,7 @@ export default function DrawingTool() {
   // Bulk extract: Notes (left edge) — calls /api/extract-notes
   // ──────────────────────────────────────────────────────────
 
-  async function runBulkNotesExtract(cropDataUrl: string) {
+  async function runBulkNotesExtract(cropDataUrl: string, cropRect: CropRect) {
     setBulkExtracting(true);
     setBulkResult(null);
     try {
@@ -820,24 +839,34 @@ export default function DrawingTool() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      const notes: { noteText: string }[] = data.notes || [];
+      const notes: { noteNum: number; noteText: string; yPercent?: number }[] = data.notes || [];
       if (notes.length === 0) {
         toast({ title: "No notes found", description: "AI found no note lines in the selected area." });
         return;
       }
 
-      // Place balloons on LEFT edge, stacked downward
+      // Place balloons on LEFT edge, Y aligned with each note's position in the crop
       const canvasW = canvasRef.current?.width  || 1000;
       const canvasH = canvasRef.current?.height || 1000;
-      const X_PCT   = 4; // left edge ~4% from left
+      const X_PCT   = ((BALLOON_RADIUS + 4) / canvasW) * 100; // just inside left edge
 
       // Calculate starting number ONCE before the loop
       const existingNums = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       let nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
 
-      let startY = 5;
-      for (const note of notes) {
-        const yPct = resolveCollision(X_PCT, startY, canvasW, canvasH);
+      let fallbackY = ((cropRect.y + BALLOON_RADIUS + 4) / canvasH) * 100;
+      const stepPct = ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
+
+      for (let i = 0; i < notes.length; i++) {
+        const note = notes[i];
+        // Use AI-provided yPercent (relative to crop) mapped to canvas, or fallback
+        let yPct: number;
+        if (note.yPercent != null) {
+          // note.yPercent is % within crop image → map to canvas
+          yPct = ((cropRect.y + (note.yPercent / 100) * cropRect.h) / canvasH) * 100;
+        } else {
+          yPct = fallbackY + i * stepPct;
+        }
         await createBalloon.mutateAsync({
           balloonNumber:  String(nextNum),
           pageNumber:     currentPage,
@@ -851,7 +880,6 @@ export default function DrawingTool() {
           nominalValue:   "",
         });
         nextNum++;
-        startY = yPct + ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
       }
 
       setBulkResult({ type: "notes", count: notes.length });
@@ -902,8 +930,10 @@ export default function DrawingTool() {
       // Place balloons on left edge of the crop rect, stacking bottom to top
       const canvasW = canvasRef.current?.width  || 1000;
       const canvasH = canvasRef.current?.height || 1000;
-      // X position: just outside the left edge of the dragged rectangle
-      const X_PCT   = ((cropRect.x - BALLOON_RADIUS - 4) / canvasW) * 100;
+      // X position: zigzag — odd rows (1,3,5) inner (closer to frame), even rows (2,4,6) outer
+      // Inner = just outside left edge, Outer = one balloon diameter further left
+      const X_INNER = ((cropRect.x - BALLOON_RADIUS - 4) / canvasW) * 100;
+      const X_OUTER = ((cropRect.x - BALLOON_RADIUS * 3 - 8) / canvasW) * 100;
       // Y start: bottom of the crop rect, stack upward
       const cropBottomPct = ((cropRect.y + cropRect.h - BALLOON_RADIUS - 4) / canvasH) * 100;
 
@@ -912,11 +942,12 @@ export default function DrawingTool() {
       let nextNum = existingNumsBom.length > 0 ? Math.max(...existingNumsBom) + 1 : 1;
       const stepPct = ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
 
-      // Stack bottom to top: place each balloon going upward
-      // row index 0 = bottom, last row = top
+      // Stack bottom to top: place each balloon going upward, zigzag inner/outer
+      // i=0 (row 1, bottom) = inner, i=1 = outer, i=2 = inner, etc.
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const yPct = cropBottomPct - i * stepPct;
+        const X_PCT = i % 2 === 0 ? X_INNER : X_OUTER;
         await createBalloon.mutateAsync({
           balloonNumber:  String(nextNum + i),
           pageNumber:     currentPage,

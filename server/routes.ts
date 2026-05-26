@@ -202,13 +202,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 Extract every numbered note line and return ONLY valid JSON in this exact format:
 {
   "notes": [
-    { "noteNum": 1, "noteText": "full text of note 1" },
-    { "noteNum": 2, "noteText": "full text of note 2" }
+    { "noteNum": 1, "noteText": "full text of note 1", "yPercent": 5.2 },
+    { "noteNum": 2, "noteText": "full text of note 2", "yPercent": 12.8 }
   ]
 }
 Rules:
 - Include ALL numbered notes visible, even if text is long.
 - noteText = the complete note text, exactly as written, EXCLUDING the leading number and period.
+- yPercent = the vertical position of this note number as a percentage of the image height (0 = top, 100 = bottom). Measure from the top of the note number digit.
 - Do NOT include triangle symbols or sub-notes.
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
