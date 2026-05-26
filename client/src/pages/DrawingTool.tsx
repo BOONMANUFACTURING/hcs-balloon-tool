@@ -910,14 +910,15 @@ export default function DrawingTool() {
       // Calculate starting number ONCE before the loop
       const existingNumsBom = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       let nextNum = existingNumsBom.length > 0 ? Math.max(...existingNumsBom) + 1 : 1;
+      const stepPct = ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
 
-      // Reverse rows so balloon 1 is at bottom, last is at top
-      const reversedRows = [...rows].reverse();
-      let startY = cropBottomPct;
-      for (const row of reversedRows) {
-        const yPct = resolveCollision(X_PCT, startY, canvasW, canvasH);
+      // Stack bottom to top: place each balloon going upward
+      // row index 0 = bottom, last row = top
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const yPct = cropBottomPct - i * stepPct;
         await createBalloon.mutateAsync({
-          balloonNumber:  String(nextNum + (rows.indexOf(row))),
+          balloonNumber:  String(nextNum + i),
           pageNumber:     currentPage,
           xPercent:       X_PCT,
           yPercent:       yPct,
@@ -928,7 +929,6 @@ export default function DrawingTool() {
           gdtType:        "",
           nominalValue:   "",
         });
-        startY = yPct - ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
       }
 
       setBulkResult({ type: "bom", count: rows.length });
