@@ -94,7 +94,6 @@ export default function DrawingTool() {
   const panStartRef = useRef<{ mouseX: number; mouseY: number; scrollLeft: number; scrollTop: number } | null>(null);
 
   // ── Extraction state ──
-  const pendingFromDrawModeRef = useRef(false); // true only when pending set by single-balloon draw mode
   const [pending, setPending] = useState<PendingBalloon | null>(null);
   const [lastCropUrl, setLastCropUrl] = useState<string | null>(null); // persists for right-panel preview
   const [extracting, setExtracting] = useState(false);
@@ -723,7 +722,6 @@ export default function DrawingTool() {
       anchorYPercent,
       cropDataUrl,
     };
-    pendingFromDrawModeRef.current = true; // mark: auto-save is allowed for this pending
     setPending(pend);
     setLastCropUrl(cropDataUrl); // persist for right-panel preview
     setCurrentRect(null);
@@ -825,6 +823,28 @@ export default function DrawingTool() {
       setEditGdtType(data.gdtType     || "");
       setEditNominal(data.nominalValue || "");
       setEditBalloonNum(data.balloonNumber || "");
+
+      // ── Auto-save using AI result data directly (not from state, which hasn't updated yet) ──
+      const nums = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
+      const autoNum = nums.length > 0 ? String(Math.max(...nums) + 1) : "1";
+      setBalloonNumInput(autoNum);
+      const balloon = await createBalloon.mutateAsync({
+        balloonNumber:  autoNum,
+        pageNumber:     pend.pageNumber,
+        xPercent:       pend.xPercent,
+        yPercent:       pend.yPercent,
+        anchorXPercent: pend.anchorXPercent,
+        anchorYPercent: pend.anchorYPercent,
+        rowType:        data.rowType     || "DIMENSION",
+        description:    data.description || "",
+        gdtType:        data.gdtType     || "",
+        nominalValue:   data.nominalValue || "",
+      });
+      setSelectedBalloonId(balloon.id);
+      setPending(null);
+      setExtractResult(null);
+      toast({ title: `Balloon B${autoNum} saved`, description: data.description || "" });
+      setDrawMode(true);
     } catch (err: any) {
       setExtractResult({ rawReading: "Extraction failed", rowType: "DIMENSION", description: "", gdtType: "", nominalValue: "", confidence: "low", error: err.message });
       setEditRowType("DIMENSION");
@@ -1186,14 +1206,7 @@ export default function DrawingTool() {
     return nums.length > 0 ? String(Math.max(...nums) + 1) : "1";
   })();
 
-  useEffect(() => {
-    if (pending && pendingFromDrawModeRef.current) {
-      pendingFromDrawModeRef.current = false; // consume the flag
-      setBalloonNumInput(nextBalloonNum);
-      // Auto-save immediately with next balloon number (single-balloon draw mode only)
-      saveBalloon(nextBalloonNum);
-    }
-  }, [pending]);
+  // Auto-save for single-balloon draw mode is now handled directly inside runExtraction()
 
   // ── Quick-add form state ──
   const [showBomForm,  setShowBomForm]  = useState(false);
