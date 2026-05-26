@@ -417,8 +417,8 @@ export default function DrawingTool() {
         const rawCx = (liveX / 100) * canvas.width;
         const rawCy = (liveY / 100) * canvas.height;
 
-        // Apply visual destack (skip for dragging balloon — it follows the mouse)
-        const { cx, cy } = isDragging ? { cx: rawCx, cy: rawCy } : resolveDrawPos(rawCx, rawCy, b.id);
+        // Apply visual destack (skip for dragging/multi-dragging — they follow the mouse)
+        const { cx, cy } = (isDragging || isMultiDragging) ? { cx: rawCx, cy: rawCy } : resolveDrawPos(rawCx, rawCy, b.id);
         drawn.push({ id: b.id, cx, cy });
 
         if (!isDragging && b.anchorXPercent && b.anchorYPercent) {
@@ -465,6 +465,8 @@ export default function DrawingTool() {
   // ──────────────────────────────────────────────────────────
 
   function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    // Capture pointer so mousemove keeps firing even when cursor leaves the canvas
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
     if (drawMode) {
       const pt = getCanvasXY(e);
       setDrawing(true);
@@ -1532,7 +1534,9 @@ export default function DrawingTool() {
                 style={{ cursor: cursorStyle, touchAction: "none" }}
                 onMouseDown={onMouseDown}
                 onMouseMove={onMouseMove}
+                onPointerMove={onMouseMove as any}
                 onMouseUp={onMouseUp}
+                onPointerUp={onMouseUp as any}
                 onMouseLeave={onMouseLeave}
                 data-testid="drawing-overlay"
               />
