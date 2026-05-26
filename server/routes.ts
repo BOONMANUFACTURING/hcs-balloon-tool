@@ -425,7 +425,18 @@ EXAMPLE B — SINGLE WELD, size + distance + pitch (e.g. fillet .19 / .50-1.50, 
   "confidence": "high"
 }
 
-EXAMPLE C — MULTIPLE WELDS, size + distance + pitch (e.g. 2X fillet .19 / .75-3.00):
+EXAMPLE C — MULTIPLE WELDS, size only, WITH Weld Flush (e.g. 2X fillet .18 + horizontal line below):
+{
+  "rawReading": "2X fillet weld, size 0.18, weld flush modifier",
+  "rows": [
+    { "rowType": "NOTE",      "description": "2X WELDING FLUSH",    "gdtType": "", "nominalValue": "In Compliance" },
+    { "rowType": "DIMENSION", "description": "2X WELD SIZE (MIN)", "gdtType": "", "nominalValue": "0.18" },
+    { "rowType": "DIMENSION", "description": "2X WELD SIZE (MAX)", "gdtType": "", "nominalValue": "0.18" }
+  ],
+  "confidence": "high"
+}
+
+EXAMPLE D — MULTIPLE WELDS, size + distance + pitch (e.g. 2X fillet .19 / .75-3.00):
 {
   "rawReading": "2X fillet weld, size 0.19, distance 0.75, pitch 3.00",
   "rows": [
