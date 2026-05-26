@@ -209,8 +209,9 @@ Extract every numbered note line and return ONLY valid JSON in this exact format
 Rules:
 - Include ALL numbered notes visible, even if text is long.
 - noteText = the complete note text, exactly as written, EXCLUDING the leading number and period.
-- yPercent = the vertical position of this note number as a percentage of the image height (0 = top, 100 = bottom). Measure from the top of the note number digit.
-- Do NOT include triangle symbols or sub-notes.
+- yPercent = the vertical position (0=top, 100=bottom) of the note NUMBER in the image.
+- IMPORTANT: Do NOT skip any notes. Count all numbered notes carefully and include every single one.
+- Do NOT include triangle warning symbols or sub-notes without numbers.
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
       const response = await openai.chat.completions.create({

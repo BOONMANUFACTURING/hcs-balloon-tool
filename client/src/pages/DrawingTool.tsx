@@ -292,7 +292,7 @@ export default function DrawingTool() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pending, balloonNumInput, selectedBalloonId, editBalloonNum, deleteBalloon]);
+  }, [pending, balloonNumInput, selectedBalloonId, selectedBalloonIds, editBalloonNum, deleteBalloon]);
 
   // ──────────────────────────────────────────────────────────
   // Overlay canvas — draw balloons + active rect
@@ -940,13 +940,15 @@ export default function DrawingTool() {
       // Calculate starting number ONCE before the loop
       const existingNumsBom = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       let nextNum = existingNumsBom.length > 0 ? Math.max(...existingNumsBom) + 1 : 1;
-      const stepPct = ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
+      // Row height = crop height divided by number of rows (align each balloon to its BOM row)
+      const rowHeightPct = (cropRect.h / canvasH) * 100 / rows.length;
 
       // Stack bottom to top: place each balloon going upward, zigzag inner/outer
       // i=0 (row 1, bottom) = inner, i=1 = outer, i=2 = inner, etc.
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const yPct = cropBottomPct - i * stepPct;
+        // Center of each row from bottom
+        const yPct = cropBottomPct - i * rowHeightPct - rowHeightPct * 0.5;
         const X_PCT = i % 2 === 0 ? X_INNER : X_OUTER;
         await createBalloon.mutateAsync({
           balloonNumber:  String(nextNum + i),
