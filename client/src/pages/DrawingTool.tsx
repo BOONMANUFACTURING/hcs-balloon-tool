@@ -940,13 +940,15 @@ export default function DrawingTool() {
       // Calculate starting number ONCE before the loop
       const existingNumsBom = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
       let nextNum = existingNumsBom.length > 0 ? Math.max(...existingNumsBom) + 1 : 1;
+      // Reverse rows so Item 1 is at bottom, last item at top
+      const orderedRows = [...rows].reverse();
       // Row height = crop height divided by number of rows (align each balloon to its BOM row)
-      const rowHeightPct = (cropRect.h / canvasH) * 100 / rows.length;
+      const rowHeightPct = (cropRect.h / canvasH) * 100 / orderedRows.length;
 
       // Stack bottom to top: place each balloon going upward, zigzag inner/outer
       // i=0 (row 1, bottom) = inner, i=1 = outer, i=2 = inner, etc.
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+      for (let i = 0; i < orderedRows.length; i++) {
+        const row = orderedRows[i];
         // Center of each row from bottom
         const yPct = cropBottomPct - i * rowHeightPct - rowHeightPct * 0.5;
         const X_PCT = i % 2 === 0 ? X_INNER : X_OUTER;
