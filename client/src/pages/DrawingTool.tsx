@@ -141,6 +141,7 @@ export default function DrawingTool() {
 
   // Keep a live ref to balloons so mouse handlers always see the latest list
   const balloonsRef = useRef<Balloon[]>([]);
+  const balloonListRef = useRef<HTMLDivElement>(null); // left panel list container
 
   // ──────────────────────────────────────────────────────────
   // Data queries
@@ -158,6 +159,13 @@ export default function DrawingTool() {
 
   // Keep ref in sync
   useEffect(() => { balloonsRef.current = balloons; }, [balloons]);
+
+  // Auto-scroll balloon list to show the newly selected/created balloon
+  useEffect(() => {
+    if (!selectedBalloonId || !balloonListRef.current) return;
+    const el = balloonListRef.current.querySelector(`[data-balloon-id="${selectedBalloonId}"]`) as HTMLElement | null;
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedBalloonId]);
 
   // Load session settings on open
   useEffect(() => {
@@ -1725,7 +1733,7 @@ export default function DrawingTool() {
               Balloons ({balloons.length})
             </p>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto" ref={balloonListRef}>
             {sortedBalloons.length === 0 && (
               <p className="text-xs text-muted-foreground text-center mt-8 px-3 leading-relaxed">
                 No balloons yet.<br />Click "Draw Balloon" to start.
@@ -1734,6 +1742,7 @@ export default function DrawingTool() {
             {sortedBalloons.map(b => (
               <div
                 key={b.id}
+                data-balloon-id={b.id}
                 className={`flex items-center gap-2 px-3 py-2 cursor-pointer border-b border-border/50 hover:bg-secondary/50 transition-colors ${selectedBalloonId === b.id ? "bg-secondary" : ""}`}
                 onClick={() => {
                   setSelectedBalloonId(b.id);
