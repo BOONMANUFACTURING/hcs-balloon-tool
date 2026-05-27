@@ -1939,7 +1939,6 @@ export default function DrawingTool() {
                   <label className="text-xs text-muted-foreground">Col G — Nominal Value</label>
                   <ComboInput
                     value={editNominal}
-                    onChange={setEditNominal}
                     options={editRowType === "NOTE" ? ["In Compliance"] : []}
                     placeholder={editRowType === "NOTE" ? "In Compliance" : "e.g. 0.438"}
                     data-testid="input-nominal"

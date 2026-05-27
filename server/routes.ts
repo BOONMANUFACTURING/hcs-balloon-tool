@@ -685,16 +685,12 @@ Rules:
       }
 
       // Ensure Col E dropdown exists (_Lists!$C$1:$C$33 = Standard Notes)
-      // ExcelJS preserves existing validations on rows 6+ since we didn't splice
-      // Add it explicitly in case it was missing from the template
-      const hasDvE = ws.dataValidations.model["E6"];
-      if (!hasDvE) {
-        ws.dataValidations.add("E6:E505", {
-          type: "list",
-          allowBlank: true,
-          formulae: ["_Lists!$C$1:$C$33"],
-        });
-      }
+      // Always set — ExcelJS merges/overwrites safely
+      (ws as any).dataValidations.add("E6:E505", {
+        type: "list",
+        allowBlank: true,
+        formulae: ["_Lists!$C$1:$C$33"],
+      });
 
       // Stream the file back
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
