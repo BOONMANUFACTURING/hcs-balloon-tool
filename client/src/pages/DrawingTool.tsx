@@ -1085,7 +1085,8 @@ export default function DrawingTool() {
       // Place balloons on LEFT edge, Y aligned with each note's position in the crop
       const canvasW = canvasRef.current?.width  || 1000;
       const canvasH = canvasRef.current?.height || 1000;
-      const X_PCT   = ((BALLOON_RADIUS + 4) / canvasW) * 100; // just inside left edge
+      // Place balloons just to the LEFT of the crop box, as close as possible to it
+      const X_PCT   = ((cropRect.x - BALLOON_RADIUS * 2 - 6) / canvasW) * 100;
 
       // Calculate starting number ONCE before the loop
       const existingNums = balloonsRef.current.map(b => parseInt(b.balloonNumber)).filter(n => !isNaN(n));
@@ -1104,12 +1105,13 @@ export default function DrawingTool() {
         } else {
           yPct = fallbackY + i * stepPct;
         }
+        const anchorXPct = (cropRect.x / canvasW) * 100; // leader line touches left edge of crop
         await createBalloon.mutateAsync({
           balloonNumber:  String(nextNum),
           pageNumber:     currentPage,
           xPercent:       X_PCT,
           yPercent:       yPct,
-          anchorXPercent: X_PCT,
+          anchorXPercent: anchorXPct,
           anchorYPercent: yPct,
           rowType:        "NOTE",
           description:    note.noteText,
