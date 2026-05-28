@@ -1103,30 +1103,51 @@ export default function DrawingTool() {
       let fallbackY = ((cropRect.y + BALLOON_RADIUS + 4) / canvasH) * 100;
       const stepPct = ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
 
+      let lastNoteBalloon: any = null;
+      let lastNoteText = "";
       for (let i = 0; i < notes.length; i++) {
         const note = notes[i];
-        // Use AI-provided yPercent (relative to crop) mapped to canvas, or fallback
         let yPct: number;
         if (note.yPercent != null) {
-          // note.yPercent is % within crop image → map to canvas
           yPct = ((cropRect.y + (note.yPercent / 100) * cropRect.h) / canvasH) * 100;
         } else {
           yPct = fallbackY + i * stepPct;
         }
-        const anchorXPct = (cropRect.x / canvasW) * 100; // leader line touches left edge of crop
-        await createBalloon.mutateAsync({
-          balloonNumber:  String(nextNum),
-          pageNumber:     currentPage,
-          xPercent:       X_PCT,
-          yPercent:       yPct,
-          anchorXPercent: anchorXPct,
-          anchorYPercent: yPct,
-          rowType:        "NOTE",
-          description:    note.noteText,
-          gdtType:        "",
-          nominalValue:   "",
+        const anchorXPct = (cropRect.x / canvasW) * 100;
+        const b = await createBalloon.mutateAsync({
+          balloonNumber:     String(nextNum),
+          pageNumber:        currentPage,
+          xPercent:          X_PCT,
+          yPercent:          yPct,
+          anchorXPercent:    anchorXPct,
+          anchorYPercent:    yPct,
+          rowType:           "NOTE",
+          description:       note.noteText,
+          gdtType:           "",
+          nominalValue:      "",
+          lowerTolerance:    "",
+          upperTolerance:    "",
+          materialCondition: "NONE",
+          tool:              "Visual - Visual inspection",
+          calibrationDueDate: "",
+          firPqr:            settingFirPqr,
         });
+        lastNoteBalloon = b;
+        lastNoteText = note.noteText;
         nextNum++;
+      }
+
+      // Select the last created balloon so right panel shows it
+      if (lastNoteBalloon) {
+        setSelectedBalloonId(lastNoteBalloon.id);
+        setEditRowType("NOTE");
+        setEditDescription(lastNoteText);
+        setEditGdtType("");
+        setEditNominal("");
+        setEditBalloonNum(String(nextNum - 1));
+        setEditLowerTol("");
+        setEditUpperTol("");
+        setEditMaterialCondition("NONE");
       }
 
       setBulkResult({ type: "notes", count: notes.length });
@@ -1268,9 +1289,11 @@ export default function DrawingTool() {
       let nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
 
       let startY = anchorYPct;
+      let lastBalloon: any = null;
+      let lastRow: typeof rows[0] | null = null;
       for (const row of rows) {
         const yPct = resolveCollision(anchorXPct, startY, canvasW, canvasH);
-        await createBalloon.mutateAsync({
+        const b = await createBalloon.mutateAsync({
           balloonNumber:  String(nextNum),
           pageNumber:     currentPage,
           xPercent:       anchorXPct,
@@ -1284,11 +1307,26 @@ export default function DrawingTool() {
           lowerTolerance:    "",
           upperTolerance:    "",
           materialCondition: "NONE",
-          firPqr:            "PQR",
+          firPqr:            settingFirPqr,
           ...getToolForRow(row.rowType, row.description),
         });
+        lastBalloon = b;
+        lastRow = row;
         nextNum++;
         startY = yPct + ((BALLOON_RADIUS * 2 + 6) / canvasH) * 100;
+      }
+
+      // Select the last created balloon so right panel shows it
+      if (lastBalloon && lastRow) {
+        setSelectedBalloonId(lastBalloon.id);
+        setEditRowType(lastRow.rowType || "DIMENSION");
+        setEditDescription(lastRow.description || "");
+        setEditGdtType(lastRow.gdtType || "");
+        setEditNominal(lastRow.nominalValue || "");
+        setEditBalloonNum(String(nextNum - 1));
+        setEditLowerTol("");
+        setEditUpperTol("");
+        setEditMaterialCondition("NONE");
       }
 
       setBulkResult({ type: "weld", count: rows.length });
