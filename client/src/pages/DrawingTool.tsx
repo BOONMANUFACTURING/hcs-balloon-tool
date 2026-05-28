@@ -1157,6 +1157,7 @@ export default function DrawingTool() {
       toast({ title: "Notes extraction failed", description: err.message, variant: "destructive" });
     } finally {
       setBulkExtracting(false);
+      setDrawMode("notes"); // stay in notes draw mode for next drag
     }
   }
 
@@ -1336,6 +1337,7 @@ export default function DrawingTool() {
     } finally {
       setBulkExtracting(false);
       setPending(null);
+      setDrawMode("weld"); // stay in weld draw mode so user can drag next symbol
     }
   }
 
