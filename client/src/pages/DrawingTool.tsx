@@ -185,8 +185,20 @@ export default function DrawingTool() {
       .catch(() => {}); // ignore errors silently
   }, [sessionId]);
 
-  // Helper: auto-fill tolerance from table based on decimal count of a nominal value
-  function autoTolerance(nominal: string): { lower: string; upper: string } {
+  // Helper: auto-fill tolerance from table based on decimal count OR angle/GD&T type
+  function autoTolerance(nominal: string, gdtType = "", description = ""): { lower: string; upper: string } {
+    // Check if this is an angular dimension
+    const isAngle =
+      gdtType.toUpperCase().includes("ANGULARITY") ||
+      gdtType.toUpperCase().includes("ANGLE") ||
+      description.toUpperCase().includes("ANGULARITY") ||
+      /\d+(\.\d+)?\s*°/.test(nominal) ||
+      nominal.trim().endsWith("°");
+    if (isAngle) {
+      if (!tolAngle) return { lower: "", upper: "" };
+      return { lower: tolAngle, upper: tolAngle };
+    }
+    // Decimal count for linear dimensions
     const m = nominal.trim().match(/^-?\d*\.(\d+)$/);
     if (!m) return { lower: "", upper: "" };
     const decimals = m[1].length;
@@ -196,6 +208,18 @@ export default function DrawingTool() {
     else if (decimals >= 3) tol = tolXXX;
     if (!tol) return { lower: "", upper: "" };
     return { lower: tol, upper: tol };
+  }
+
+  // Helper: warn user if no tolerances are set (non-blocking, show once per activation)
+  function checkTolerances() {
+    if (!tolX && !tolXX && !tolXXX && !tolAngle) {
+      toast({
+        title: "⚠️ Tolerances not set",
+        description: "Go to Settings (gear icon) and enter tolerance values before drawing balloons.",
+        variant: "destructive",
+        duration: 6000,
+      });
+    }
   }
 
   // Save session settings to server
@@ -933,7 +957,7 @@ export default function DrawingTool() {
       // Auto-fill H/I from tolerance table
       const { lower: autoLower, upper: autoUpper } = autoRowType === "NOTE"
         ? { lower: "", upper: "" }
-        : autoTolerance(autoNominal);
+        : autoTolerance(autoNominal, data.gdtType || "", autoDesc);
       const balloon = await createBalloon.mutateAsync({
         balloonNumber:     autoNum,
         pageNumber:        pend.pageNumber,
@@ -1477,6 +1501,7 @@ export default function DrawingTool() {
             variant={drawMode === true ? "default" : "outline"}
             size="sm"
             onClick={() => {
+              if (drawMode !== true) checkTolerances();
               setDrawMode(drawMode === true ? false : true);
               setPending(null); setCurrentRect(null);
             }}
@@ -1492,6 +1517,7 @@ export default function DrawingTool() {
             variant={drawMode === "notes" ? "default" : "outline"}
             size="sm"
             onClick={() => {
+              if (drawMode !== "notes") checkTolerances();
               setDrawMode(drawMode === "notes" ? false : "notes");
               setPending(null); setCurrentRect(null);
               setShowBomForm(false); setShowNoteForm(false);
@@ -1509,6 +1535,7 @@ export default function DrawingTool() {
             variant={drawMode === "bom" ? "default" : "outline"}
             size="sm"
             onClick={() => {
+              if (drawMode !== "bom") checkTolerances();
               setDrawMode(drawMode === "bom" ? false : "bom");
               setPending(null); setCurrentRect(null);
               setShowBomForm(false); setShowNoteForm(false);
@@ -1526,6 +1553,7 @@ export default function DrawingTool() {
             variant={drawMode === "weld" ? "default" : "outline"}
             size="sm"
             onClick={() => {
+              if (drawMode !== "weld") checkTolerances();
               setDrawMode(drawMode === "weld" ? false : "weld");
               setPending(null); setCurrentRect(null);
               setShowBomForm(false); setShowNoteForm(false);
@@ -1996,7 +2024,7 @@ export default function DrawingTool() {
                     onChange={(val) => {
                       setEditNominal(val);
                       if (editRowType !== "NOTE") {
-                        const { lower, upper } = autoTolerance(val);
+                        const { lower, upper } = autoTolerance(val, editGdtType, editDescription);
                         if (lower) { setEditLowerTol(lower); setEditUpperTol(upper); }
                       }
                     }}
