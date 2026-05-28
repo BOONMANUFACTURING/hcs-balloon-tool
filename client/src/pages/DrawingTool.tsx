@@ -119,10 +119,10 @@ export default function DrawingTool() {
   // FIR/PQR for Col N — applies to all rows on export
   const [settingFirPqr, setSettingFirPqr] = useState("PQR");
   // Tolerance table: decimals → tolerance value
-  const [tolX,    setTolX]    = useState(""); // .X   e.g. 0.030
-  const [tolXX,   setTolXX]   = useState(""); // .XX  e.g. 0.010
-  const [tolXXX,  setTolXXX]  = useState(""); // .XXX e.g. 0.005
-  const [tolXXXX, setTolXXXX] = useState(""); // .XXXX e.g. 0.002
+  const [tolX,     setTolX]     = useState(""); // .X   e.g. 0.8
+  const [tolXX,    setTolXX]    = useState(""); // .XX  e.g. 0.40
+  const [tolXXX,   setTolXXX]   = useState(""); // .XXX e.g. 0.005
+  const [tolAngle, setTolAngle] = useState(""); // Angles e.g. 0.5
   // Tool Master List status
   const [toolMapCount,   setToolMapCount]   = useState(0);
   const [toolMapLoading, setToolMapLoading] = useState(false);
@@ -178,7 +178,7 @@ export default function DrawingTool() {
           if (s.tolerances.x)     setTolX(s.tolerances.x);
           if (s.tolerances.xx)    setTolXX(s.tolerances.xx);
           if (s.tolerances.xxx)   setTolXXX(s.tolerances.xxx);
-          if (s.tolerances.xxxx)  setTolXXXX(s.tolerances.xxxx);
+          if (s.tolerances.angle) setTolAngle(s.tolerances.angle);
         }
         if (s.toolCalMap) setToolMapCount(Object.keys(s.toolCalMap).length);
       })
@@ -193,8 +193,7 @@ export default function DrawingTool() {
     let tol = "";
     if (decimals === 1) tol = tolX;
     else if (decimals === 2) tol = tolXX;
-    else if (decimals === 3) tol = tolXXX;
-    else if (decimals >= 4) tol = tolXXXX;
+    else if (decimals >= 3) tol = tolXXX;
     if (!tol) return { lower: "", upper: "" };
     return { lower: tol, upper: tol };
   }
@@ -205,7 +204,7 @@ export default function DrawingTool() {
     try {
       await apiRequest("PATCH", `/api/sessions/${sessionId}/settings`, {
         firPqr: settingFirPqr,
-        tolerances: { x: tolX, xx: tolXX, xxx: tolXXX, xxxx: tolXXXX },
+        tolerances: { x: tolX, xx: tolXX, xxx: tolXXX, angle: tolAngle },
       });
       toast({ title: "Settings saved" });
       setShowSettings(false);
@@ -1706,10 +1705,10 @@ export default function DrawingTool() {
               <label className="text-xs font-medium text-muted-foreground">General Tolerance (Col H/I) — from title block</label>
               <div className="grid grid-cols-4 gap-2">
                 {([
-                  { label: ".X",    val: tolX,    set: setTolX    },
-                  { label: ".XX",   val: tolXX,   set: setTolXX   },
-                  { label: ".XXX",  val: tolXXX,  set: setTolXXX  },
-                  { label: ".XXXX", val: tolXXXX, set: setTolXXXX },
+                  { label: ".X",     val: tolX,     set: setTolX     },
+                  { label: ".XX",    val: tolXX,    set: setTolXX    },
+                  { label: ".XXX",   val: tolXXX,   set: setTolXXX   },
+                  { label: "Angles", val: tolAngle, set: setTolAngle },
                 ] as { label: string; val: string; set: (v: string) => void }[]).map(({ label, val, set }) => (
                   <div key={label} className="space-y-0.5">
                     <div className="text-xs text-center text-muted-foreground font-mono">{label}</div>
