@@ -1819,6 +1819,7 @@ export default function DrawingTool() {
                   setEditDescription(b.description);
                   setEditGdtType(b.gdtType);
                   setEditNominal(b.nominalValue);
+                  setEditBalloonNum(String(b.balloonNumber));
                   setEditLowerTol((b as any).lowerTolerance || "");
                   setEditUpperTol((b as any).upperTolerance || "");
                   setEditMaterialCondition((b as any).materialCondition || "NONE");
