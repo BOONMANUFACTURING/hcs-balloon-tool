@@ -4,7 +4,9 @@ import { storage } from "./storage";
 import { insertSessionSchema, insertBalloonSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// OpenRouter replaces Gemini — uses OpenAI-compatible API
+// Normal mode: nvidia/nemotron-nano-12b-v2-vl:free (free, vision, OCR-optimized)
+// Deep mode:   google/gemma-4-31b-it:free (free, vision, stronger reasoning)
 import ExcelJS from "exceljs";
 import path from "path";
 import fs from "fs";
@@ -46,45 +48,66 @@ RULES (AMAT-specific):
 
 Return ONLY the JSON object, no markdown, no explanation.`;
 
-// ─── Gemini helper ────────────────────────────────────────────────────────────
-// Normal search: Flash x2, pick best
-// Deep search:   Pro   x2, pick best
-async function geminiExtract(
+// ─── OpenRouter helper ────────────────────────────────────────────────────────
+// Normal: nvidia/nemotron-nano-12b-v2-vl:free  (free, OCR-optimised)
+// Deep:   google/gemma-4-31b-it:free            (free, stronger reasoning)
+const OPENROUTER_MODELS = {
+  normal: "nvidia/nemotron-nano-12b-v2-vl:free",
+  deep:   "google/gemma-4-31b-it:free",
+};
+
+async function openRouterExtract(
   apiKey: string,
-  modelName: string,   // "gemini-1.5-flash" or "gemini-1.5-pro"
+  mode: "normal" | "deep",
   systemPrompt: string,
   userPrompt: string,
   imageBase64: string,
   mimeType: string
 ): Promise<any> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: systemPrompt,
-  });
-
-  const imagePart = {
-    inlineData: { data: imageBase64, mimeType: mimeType as any },
-  };
-
+  const modelName = OPENROUTER_MODELS[mode];
+  const calls = 2; // always 2 attempts, pick best
   const results: any[] = [];
-
-  // Call twice — pick most confident / most complete result
   let lastError = "";
-  for (let i = 0; i < 2; i++) {
+
+  for (let i = 0; i < calls; i++) {
     try {
-      const result = await model.generateContent([userPrompt, imagePart]);
-      const raw = result.response.text();
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://hcs-balloon-tool.local",
+          "X-Title": "HCS Balloon Tool",
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: userPrompt },
+                { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+              ],
+            },
+          ],
+        }),
+      });
+
+      const data = await response.json() as any;
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+
+      const raw     = data.choices?.[0]?.message?.content || "";
       const cleaned = raw.replace(/```json\n?|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const parsed  = JSON.parse(cleaned);
       results.push(parsed);
     } catch (e: any) {
       lastError = e?.message || String(e);
-      console.error(`[Gemini] Attempt ${i + 1} failed:`, lastError);
+      console.error(`[OpenRouter] Attempt ${i + 1} failed:`, lastError);
     }
   }
 
-  if (results.length === 0) throw new Error(`Gemini failed: ${lastError}`);
+  if (results.length === 0) throw new Error(`OpenRouter extraction failed: ${lastError}`);
 
   // Pick best: prefer "high" confidence, then most rows, then first
   const ranked = results.sort((a, b) => {
@@ -261,12 +284,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/extract", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
 
-    const apiKey   = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
-    const modelId  = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
+    const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
+    const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
 
     if (!apiKey) {
       return res.json({
-        rawReading: "MOCK MODE — no Gemini API key configured. Enter your API key in Settings to enable real extraction.",
+        rawReading: "MOCK MODE — no OpenRouter API key configured. Enter your API key in Settings to enable real extraction.",
         rowType: "DIMENSION",
         description: "DISTANCE",
         gdtType: "",
@@ -281,7 +304,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const mimeType    = req.file.mimetype || "image/png";
       const userPrompt  = `You are a senior semiconductor equipment manufacturing engineer at HCS Engineering (Singapore), specialising in AMAT (Applied Materials) FAI drawings. Examine this engineering drawing crop with extreme care and precision — as if signing off on a first-article inspection report. Extract the feature information accurately.`;
 
-      const parsed = await geminiExtract(apiKey, modelId, EXTRACTION_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, EXTRACTION_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Extraction failed" });
@@ -293,8 +316,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/extract-notes", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
-    const apiKey  = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
-    const modelId = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
+    const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
+    const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
 
     if (!apiKey) {
       return res.json({
@@ -333,7 +356,7 @@ Rules:
 - Do NOT include sub-items without their own note number.
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
-      const parsed = await geminiExtract(apiKey, modelId, systemPrompt, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, systemPrompt, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Notes extraction failed" });
@@ -345,8 +368,8 @@ Rules:
 
   app.post("/api/extract-bom", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
-    const apiKey  = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
-    const modelId = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
+    const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
+    const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
 
     if (!apiKey) {
       return res.json({
@@ -381,7 +404,7 @@ Rules:
 - Skip any header rows (ITEM, QTY, PART NO., DESCRIPTION, TCENG NO.).
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
-      const parsed = await geminiExtract(apiKey, modelId, systemPrompt, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, systemPrompt, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "BOM extraction failed" });
@@ -391,8 +414,8 @@ Rules:
   // ─── Weld Extraction: reads a weld symbol crop, returns multiple rows ──────────────────────
   app.post("/api/extract-weld", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
-    const apiKey  = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
-    const modelId = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
+    const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
+    const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
 
     if (!apiKey) {
       // Mock mode — return sample 7-row fillet weld output (2X, size+distance+pitch)
@@ -559,7 +582,7 @@ Rules:
       const mimeType    = req.file.mimetype || "image/png";
       const userPrompt  = `You are a senior semiconductor equipment manufacturing engineer and certified welding inspector at HCS Engineering (Singapore), specialising in AMAT engineering drawings. Examine this weld symbol crop with extreme precision — every detail matters for FAI compliance. Extract all weld symbol rows accurately.`;
 
-      const parsed = await geminiExtract(apiKey, modelId, WELD_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, WELD_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Weld extraction failed" });

@@ -129,16 +129,16 @@ export default function DrawingTool() {
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   // ── Gemini API settings (app-wide, stored in localStorage) ──
-  const [geminiKey,   setGeminiKey]   = useState<string>(() => localStorage.getItem("__HCS_GEMINI_KEY")   || "");
-  const [geminiModel, setGeminiModel] = useState<string>(() => localStorage.getItem("__HCS_GEMINI_MODEL") || "gemini-1.5-flash");
+  const [openRouterKey, setOpenRouterKey]   = useState<string>(() => localStorage.getItem("__HCS_OPENROUTER_KEY")   || "");
+  const [openRouterMode, setOpenRouterMode] = useState<string>(() => localStorage.getItem("__HCS_OPENROUTER_MODE") || "normal");
 
   // Keep window globals in sync so extract calls can read them
   useEffect(() => {
-    (window as any).__HCS_GEMINI_KEY   = geminiKey;
-    (window as any).__HCS_GEMINI_MODEL = geminiModel;
-    localStorage.setItem("__HCS_GEMINI_KEY",   geminiKey);
-    localStorage.setItem("__HCS_GEMINI_MODEL", geminiModel);
-  }, [geminiKey, geminiModel]);
+    (window as any).__HCS_OPENROUTER_KEY   = openRouterKey;
+    (window as any).__HCS_OPENROUTER_MODE = openRouterMode;
+    localStorage.setItem("__HCS_OPENROUTER_KEY",   openRouterKey);
+    localStorage.setItem("__HCS_OPENROUTER_MODE", openRouterMode);
+  }, [openRouterKey, openRouterMode]);
 
   // ── Balloon list ──
   const [selectedBalloonId, setSelectedBalloonId] = useState<number | null>(null);
@@ -939,13 +939,13 @@ export default function DrawingTool() {
     setExtracting(true);
     setExtractResult(null);
     try {
-      const apiKey = (window as any).__HCS_GEMINI_KEY || "";
+      const apiKey = (window as any).__HCS_OPENROUTER_KEY || "";
       const blob   = await fetch(pend.cropDataUrl).then(r => r.blob());
       const form   = new FormData();
       form.append("crop", blob, "crop.png");
 
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-gemini-key"] = apiKey; headers["x-gemini-model"] = (window as any).__HCS_GEMINI_MODEL || "gemini-1.5-flash"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
 
       const res  = await fetch("/api/extract", { method: "POST", headers, body: form });
       const data: ExtractionResult = await res.json();
@@ -1108,12 +1108,12 @@ export default function DrawingTool() {
     setBulkExtracting(true);
     setBulkResult(null);
     try {
-      const apiKey = (window as any).__HCS_GEMINI_KEY || "";
+      const apiKey = (window as any).__HCS_OPENROUTER_KEY || "";
       const blob   = await fetch(cropDataUrl).then(r => r.blob());
       const form   = new FormData();
       form.append("crop", blob, "crop.png");
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-gemini-key"] = apiKey; headers["x-gemini-model"] = (window as any).__HCS_GEMINI_MODEL || "gemini-1.5-flash"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
 
       const res  = await fetch("/api/extract-notes", { method: "POST", headers, body: form });
       const data = await res.json();
@@ -1214,12 +1214,12 @@ export default function DrawingTool() {
       cropDataUrl,
     });
     try {
-      const apiKey = (window as any).__HCS_GEMINI_KEY || "";
+      const apiKey = (window as any).__HCS_OPENROUTER_KEY || "";
       const blob   = await fetch(cropDataUrl).then(r => r.blob());
       const form   = new FormData();
       form.append("crop", blob, "crop.png");
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-gemini-key"] = apiKey; headers["x-gemini-model"] = (window as any).__HCS_GEMINI_MODEL || "gemini-1.5-flash"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
 
       const res  = await fetch("/api/extract-bom", { method: "POST", headers, body: form });
       const data = await res.json();
@@ -1299,12 +1299,12 @@ export default function DrawingTool() {
       cropDataUrl,
     });
     try {
-      const apiKey = (window as any).__HCS_GEMINI_KEY || "";
+      const apiKey = (window as any).__HCS_OPENROUTER_KEY || "";
       const blob   = await fetch(cropDataUrl).then(r => r.blob());
       const form   = new FormData();
       form.append("crop", blob, "crop.png");
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-gemini-key"] = apiKey; headers["x-gemini-model"] = (window as any).__HCS_GEMINI_MODEL || "gemini-1.5-flash"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
 
       const res  = await fetch("/api/extract-weld", { method: "POST", headers, body: form });
       const data = await res.json();
@@ -1728,7 +1728,7 @@ export default function DrawingTool() {
             {/* ── Gemini API ── */}
             <div className="space-y-2 w-full border border-border rounded-md p-3 bg-background">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-foreground">Gemini AI Settings</span>
+                <span className="text-xs font-semibold text-foreground">AI Settings (OpenRouter)</span>
                 <span className="text-[10px] text-muted-foreground">(app-wide — saved on this PC)</span>
               </div>
               <div className="flex flex-wrap items-end gap-4">
@@ -1738,21 +1738,21 @@ export default function DrawingTool() {
                   <div className="flex gap-1">
                     <input
                       type="password"
-                      value={geminiKey}
-                      onChange={e => setGeminiKey(e.target.value)}
-                      placeholder="Paste your Gemini API key here..."
+                      value={openRouterKey}
+                      onChange={e => setOpenRouterKey(e.target.value)}
+                      placeholder="Paste your OpenRouter API key here..."
                       className="flex-1 text-xs border border-border rounded px-2 py-1.5 bg-background font-mono"
                     />
-                    {geminiKey && (
+                    {openRouterKey && (
                       <button
-                        onClick={() => setGeminiKey("")}
+                        onClick={() => setOpenRouterKey("")}
                         className="px-2 py-1 text-xs border border-border rounded text-muted-foreground hover:text-destructive hover:border-destructive"
                         title="Clear key"
                       >Clear</button>
                     )}
                   </div>
                   <p className="text-[10px] text-muted-foreground">
-                    Get your key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="underline text-primary">aistudio.google.com/apikey</a>
+                    Get your free key at <a href="https://openrouter.ai/settings/api-keys" target="_blank" rel="noreferrer" className="underline text-primary">openrouter.ai/settings/api-keys</a>
                   </p>
                 </div>
                 {/* Normal / Deep toggle */}
@@ -1760,12 +1760,12 @@ export default function DrawingTool() {
                   <label className="text-xs font-medium text-muted-foreground">Scan Mode</label>
                   <div className="flex gap-1">
                     {[
-                      { label: "Normal", value: "gemini-1.5-flash" },
-                      { label: "Deep",   value: "gemini-1.5-pro"   },
+                      { label: "Normal", value: "normal" },
+                      { label: "Deep",   value: "deep"   },
                     ].map(m => (
-                      <button key={m.value} onClick={() => setGeminiModel(m.value)}
+                      <button key={m.value} onClick={() => setOpenRouterMode(m.value)}
                         className={`px-4 py-1.5 text-xs rounded border font-medium transition-colors ${
-                          geminiModel === m.value
+                          openRouterMode === m.value
                             ? "bg-primary text-primary-foreground border-primary"
                             : "bg-background text-foreground border-border hover:bg-secondary"
                         }`}>
@@ -1774,21 +1774,21 @@ export default function DrawingTool() {
                     ))}
                   </div>
                   <p className="text-[10px] text-muted-foreground">
-                    {geminiModel === "gemini-1.5-flash"
-                      ? "Normal · Gemini Flash · 2x scan"
-                      : "Deep · Gemini Pro · 2x scan"}
+                    {openRouterMode === "normal"
+                      ? "Normal · Nemotron Vision (free) · 2x scan"
+                      : "Deep · Gemma 4 31B (free) · 2x scan"}
                   </p>
                 </div>
                 {/* Status indicator */}
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Status</label>
                   <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded border ${
-                    geminiKey
+                    openRouterKey
                       ? "border-green-500 text-green-700 bg-green-50"
                       : "border-amber-400 text-amber-700 bg-amber-50"
                   }`}>
-                    <span className={`w-2 h-2 rounded-full ${ geminiKey ? "bg-green-500" : "bg-amber-400" }`} />
-                    {geminiKey ? "API key set" : "No API key"}
+                    <span className={`w-2 h-2 rounded-full ${ openRouterKey ? "bg-green-500" : "bg-amber-400" }`} />
+                    {openRouterKey ? "API key set" : "No API key"}
                   </div>
                 </div>
               </div>
