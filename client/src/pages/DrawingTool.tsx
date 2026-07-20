@@ -128,17 +128,23 @@ export default function DrawingTool() {
   const [toolMapLoading, setToolMapLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
 
-  // ── Gemini API settings (app-wide, stored in localStorage) ──
-  const [openRouterKey, setOpenRouterKey]   = useState<string>(() => localStorage.getItem("__HCS_OPENROUTER_KEY")   || "");
+  // ── OpenRouter API settings (app-wide, stored in localStorage) ──
+  const [openRouterKey,  setOpenRouterKey]  = useState<string>(() => localStorage.getItem("__HCS_OPENROUTER_KEY")   || "");
   const [openRouterMode, setOpenRouterMode] = useState<string>(() => localStorage.getItem("__HCS_OPENROUTER_MODE") || "normal");
+  const [scanCount,      setScanCount]      = useState<number>(() => Number(localStorage.getItem("__HCS_SCAN_COUNT") || "1"));
 
   // Keep window globals in sync so extract calls can read them
   useEffect(() => {
     (window as any).__HCS_OPENROUTER_KEY   = openRouterKey;
-    (window as any).__HCS_OPENROUTER_MODE = openRouterMode;
-    localStorage.setItem("__HCS_OPENROUTER_KEY",   openRouterKey);
+    (window as any).__HCS_OPENROUTER_MODE  = openRouterMode;
+    (window as any).__HCS_SCAN_COUNT       = scanCount;
+    localStorage.setItem("__HCS_OPENROUTER_KEY",  openRouterKey);
     localStorage.setItem("__HCS_OPENROUTER_MODE", openRouterMode);
-  }, [openRouterKey, openRouterMode]);
+    localStorage.setItem("__HCS_SCAN_COUNT",      String(scanCount));
+  }, [openRouterKey, openRouterMode, scanCount]);
+
+  // Verbose extraction status
+  const [extractStatus, setExtractStatus] = useState("");
 
   // ── Balloon list ──
   const [selectedBalloonId, setSelectedBalloonId] = useState<number | null>(null);
@@ -938,6 +944,9 @@ export default function DrawingTool() {
   async function runExtraction(pend: PendingBalloon) {
     setExtracting(true);
     setExtractResult(null);
+    const scans = (window as any).__HCS_SCAN_COUNT || 1;
+    const modelLabel = (window as any).__HCS_OPENROUTER_MODE === "deep" ? "Gemma 4 31B" : "Nemotron Vision";
+    setExtractStatus(`Scanning balloon region... (${modelLabel} · ${scans}x scan)`);
     try {
       const apiKey = (window as any).__HCS_OPENROUTER_KEY || "";
       const blob   = await fetch(pend.cropDataUrl).then(r => r.blob());
@@ -945,7 +954,7 @@ export default function DrawingTool() {
       form.append("crop", blob, "crop.png");
 
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; headers["x-scan-count"] = String(scans); }
 
       const res  = await fetch("/api/extract", { method: "POST", headers, body: form });
       const data: ExtractionResult = await res.json();
@@ -1107,13 +1116,16 @@ export default function DrawingTool() {
   async function runBulkNotesExtract(cropDataUrl: string, cropRect: CropRect) {
     setBulkExtracting(true);
     setBulkResult(null);
+    const _scansN = (window as any).__HCS_SCAN_COUNT || 1;
+    const _modelN = (window as any).__HCS_OPENROUTER_MODE === "deep" ? "Gemma 4 31B" : "Nemotron Vision";
+    setExtractStatus(`Notes scan — sending to AI (${_modelN} · ${_scansN}x)...`);
     try {
       const apiKey = (window as any).__HCS_OPENROUTER_KEY || "";
       const blob   = await fetch(cropDataUrl).then(r => r.blob());
       const form   = new FormData();
       form.append("crop", blob, "crop.png");
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; headers["x-scan-count"] = String((window as any).__HCS_SCAN_COUNT || 1); }
 
       const res  = await fetch("/api/extract-notes", { method: "POST", headers, body: form });
       const data = await res.json();
@@ -1203,7 +1215,10 @@ export default function DrawingTool() {
   async function runBulkBomExtract(cropDataUrl: string, anchorXPct: number, anchorYPct: number, cropRect: CropRect) {
     setBulkExtracting(true);
     setBulkResult(null);
-    setLastCropUrl(cropDataUrl); // persist for right-panel preview
+    setLastCropUrl(cropDataUrl);
+    const _scansB = (window as any).__HCS_SCAN_COUNT || 1;
+    const _modelB = (window as any).__HCS_OPENROUTER_MODE === "deep" ? "Gemma 4 31B" : "Nemotron Vision";
+    setExtractStatus(`BOM scan — sending to AI (${_modelB} · ${_scansB}x)...`);
     setPending({
       cropRect,
       pageNumber: currentPage,
@@ -1219,7 +1234,7 @@ export default function DrawingTool() {
       const form   = new FormData();
       form.append("crop", blob, "crop.png");
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; headers["x-scan-count"] = String((window as any).__HCS_SCAN_COUNT || 1); }
 
       const res  = await fetch("/api/extract-bom", { method: "POST", headers, body: form });
       const data = await res.json();
@@ -1287,7 +1302,10 @@ export default function DrawingTool() {
   async function runBulkWeldExtract(cropDataUrl: string, anchorXPct: number, anchorYPct: number, cropRect: CropRect) {
     setBulkExtracting(true);
     setBulkResult(null);
-    setLastCropUrl(cropDataUrl); // persist for right-panel preview
+    setLastCropUrl(cropDataUrl);
+    const _scansW = (window as any).__HCS_SCAN_COUNT || 1;
+    const _modelW = (window as any).__HCS_OPENROUTER_MODE === "deep" ? "Gemma 4 31B" : "Nemotron Vision";
+    setExtractStatus(`Weld scan — sending to AI (${_modelW} · ${_scansW}x)...`);
     // Show crop preview in right panel (same as single balloon mode)
     setPending({
       cropRect,
@@ -1304,7 +1322,7 @@ export default function DrawingTool() {
       const form   = new FormData();
       form.append("crop", blob, "crop.png");
       const headers: Record<string, string> = {};
-      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; }
+      if (apiKey) { headers["x-openrouter-key"] = apiKey; headers["x-openrouter-mode"] = (window as any).__HCS_OPENROUTER_MODE || "normal"; headers["x-scan-count"] = String((window as any).__HCS_SCAN_COUNT || 1); }
 
       const res  = await fetch("/api/extract-weld", { method: "POST", headers, body: form });
       const data = await res.json();
@@ -1775,10 +1793,31 @@ export default function DrawingTool() {
                   </div>
                   <p className="text-[10px] text-muted-foreground">
                     {openRouterMode === "normal"
-                      ? "Normal · Nemotron Vision (free) · 2x scan"
-                      : "Deep · Gemma 4 31B (free) · 2x scan"}
+                      ? `Normal · Nemotron Vision (free) · ${scanCount}x scan`
+                      : `Deep · Gemma 4 31B (free) · ${scanCount}x scan`}
                   </p>
                 </div>
+
+                {/* Scan count selector */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Scans per Extract</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3].map(n => (
+                      <button key={n} onClick={() => setScanCount(n)}
+                        className={`flex-1 py-1.5 text-xs rounded border font-medium transition-colors ${
+                          scanCount === n
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-foreground border-border hover:bg-secondary"
+                        }`}>
+                        {n}x
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {scanCount === 1 ? "1x = fastest, single pass" : scanCount === 2 ? "2x = picks best of 2 results" : "3x = most accurate, slowest"}
+                  </p>
+                </div>
+
                 {/* Status indicator */}
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-muted-foreground">Status</label>
@@ -1983,10 +2022,14 @@ export default function DrawingTool() {
           )}
 
           {bulkExtracting && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Bulk extracting with GPT-4o...</p>
-              <p className="text-xs text-muted-foreground">Reading all rows, please wait</p>
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {extractStatus || "Extracting..."}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Please wait while the AI processes the image</p>
+              </div>
             </div>
           )}
 
@@ -2008,9 +2051,14 @@ export default function DrawingTool() {
           )}
 
           {extracting && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Extracting with GPT-4o Vision...</p>
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {extractStatus || "Scanning..."}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Please wait while the AI reads the dimension</p>
+              </div>
             </div>
           )}
 

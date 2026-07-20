@@ -13,23 +13,29 @@ export default function Settings() {
   const [apiKey,    setApiKey]    = useState("");
   const [showKey,   setShowKey]   = useState(false);
   const [mode,      setMode]      = useState("normal");
+  const [scanCount, setScanCount] = useState(1);
   const [saved,     setSaved]     = useState(false);
 
   useEffect(() => {
-    const key = localStorage.getItem("__HCS_OPENROUTER_KEY") || "";
-    const m   = localStorage.getItem("__HCS_OPENROUTER_MODE") || "normal";
+    const key    = localStorage.getItem("__HCS_OPENROUTER_KEY")  || "";
+    const m      = localStorage.getItem("__HCS_OPENROUTER_MODE") || "normal";
+    const scans  = Number(localStorage.getItem("__HCS_SCAN_COUNT") || "1");
     setApiKey(key);
     setMode(m);
-    if (key) (window as any).__HCS_OPENROUTER_KEY = key;
-    (window as any).__HCS_OPENROUTER_MODE = m;
+    setScanCount(scans);
+    if (key) (window as any).__HCS_OPENROUTER_KEY  = key;
+    (window as any).__HCS_OPENROUTER_MODE           = m;
+    (window as any).__HCS_SCAN_COUNT                = scans;
   }, []);
 
   function saveKey() {
     const trimmed = apiKey.trim();
     (window as any).__HCS_OPENROUTER_KEY   = trimmed;
     (window as any).__HCS_OPENROUTER_MODE  = mode;
+    (window as any).__HCS_SCAN_COUNT       = scanCount;
     localStorage.setItem("__HCS_OPENROUTER_KEY",  trimmed);
     localStorage.setItem("__HCS_OPENROUTER_MODE", mode);
+    localStorage.setItem("__HCS_SCAN_COUNT",      String(scanCount));
     setSaved(true);
     toast({ title: "Settings saved" });
     setTimeout(() => setSaved(false), 2000);
@@ -141,7 +147,29 @@ export default function Settings() {
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-muted-foreground">Both modes run 2 scans and pick the best result.</p>
+              <p className="text-[10px] text-muted-foreground">Choose Scans per Extract below to control how many times the AI runs.</p>
+            </div>
+
+            {/* Scan count */}
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Scans per Extract</label>
+              <div className="flex gap-2">
+                {[1, 2, 3].map(n => (
+                  <button
+                    key={n}
+                    onClick={() => setScanCount(n)}
+                    className={`flex-1 py-2 text-xs font-semibold rounded border transition-colors ${
+                      scanCount === n
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-foreground border-border hover:bg-secondary"
+                    }`}>
+                    {n}x
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {scanCount === 1 ? "1x — fastest, single pass" : scanCount === 2 ? "2x — picks best of 2 results" : "3x — most accurate, slowest"}
+              </p>
             </div>
 
             {/* Save / Clear */}

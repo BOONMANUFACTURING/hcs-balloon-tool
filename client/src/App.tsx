@@ -8,10 +8,12 @@ import DrawingTool from "@/pages/DrawingTool";
 import Settings from "@/pages/Settings";
 
 // Restore OpenRouter key + mode from localStorage on every app load
-const storedKey  = localStorage.getItem("__HCS_OPENROUTER_KEY");
-const storedMode = localStorage.getItem("__HCS_OPENROUTER_MODE") || "normal";
+const storedKey   = localStorage.getItem("__HCS_OPENROUTER_KEY");
+const storedMode  = localStorage.getItem("__HCS_OPENROUTER_MODE") || "normal";
+const storedScans = Number(localStorage.getItem("__HCS_SCAN_COUNT") || "1");
 if (storedKey)  (window as any).__HCS_OPENROUTER_KEY  = storedKey;
-(window as any).__HCS_OPENROUTER_MODE = storedMode;
+(window as any).__HCS_OPENROUTER_MODE  = storedMode;
+(window as any).__HCS_SCAN_COUNT       = storedScans;
 
 export default function App() {
   return (

@@ -62,14 +62,17 @@ async function openRouterExtract(
   systemPrompt: string,
   userPrompt: string,
   imageBase64: string,
-  mimeType: string
+  mimeType: string,
+  numScans: number = 1
 ): Promise<any> {
   const modelName = OPENROUTER_MODELS[mode];
-  const calls = 2; // always 2 attempts, pick best
+  const calls = Math.max(1, Math.min(numScans, 3)); // clamp 1-3
   const results: any[] = [];
   let lastError = "";
+  console.log(`[OpenRouter] model=${modelName} scans=${calls}`);
 
   for (let i = 0; i < calls; i++) {
+    console.log(`[OpenRouter] Scan ${i + 1}/${calls}...`);
     try {
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -286,6 +289,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
     const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
+    const numScans = Math.max(1, Math.min(Number(req.headers["x-scan-count"] || "1"), 3));
 
     if (!apiKey) {
       return res.json({
@@ -304,7 +308,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const mimeType    = req.file.mimetype || "image/png";
       const userPrompt  = `You are a senior semiconductor equipment manufacturing engineer at HCS Engineering (Singapore), specialising in AMAT (Applied Materials) FAI drawings. Examine this engineering drawing crop with extreme care and precision — as if signing off on a first-article inspection report. Extract the feature information accurately.`;
 
-      const parsed = await openRouterExtract(apiKey, mode, EXTRACTION_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, EXTRACTION_SYSTEM_PROMPT, userPrompt, base64Image, mimeType, numScans);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Extraction failed" });
@@ -318,6 +322,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
     const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
     const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
+    const numScans = Math.max(1, Math.min(Number(req.headers["x-scan-count"] || "1"), 3));
 
     if (!apiKey) {
       return res.json({
@@ -356,7 +361,7 @@ Rules:
 - Do NOT include sub-items without their own note number.
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
-      const parsed = await openRouterExtract(apiKey, mode, systemPrompt, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, systemPrompt, userPrompt, base64Image, mimeType, numScans);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Notes extraction failed" });
@@ -370,6 +375,7 @@ Rules:
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
     const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
     const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
+    const numScans = Math.max(1, Math.min(Number(req.headers["x-scan-count"] || "1"), 3));
 
     if (!apiKey) {
       return res.json({
@@ -404,7 +410,7 @@ Rules:
 - Skip any header rows (ITEM, QTY, PART NO., DESCRIPTION, TCENG NO.).
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
-      const parsed = await openRouterExtract(apiKey, mode, systemPrompt, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, systemPrompt, userPrompt, base64Image, mimeType, numScans);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "BOM extraction failed" });
@@ -416,6 +422,7 @@ Rules:
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
     const apiKey = req.headers["x-openrouter-key"] as string || process.env.OPENROUTER_API_KEY;
     const mode = (req.headers["x-openrouter-mode"] as string || "normal") as "normal" | "deep";
+    const numScans = Math.max(1, Math.min(Number(req.headers["x-scan-count"] || "1"), 3));
 
     if (!apiKey) {
       // Mock mode — return sample 7-row fillet weld output (2X, size+distance+pitch)
@@ -582,7 +589,7 @@ Rules:
       const mimeType    = req.file.mimetype || "image/png";
       const userPrompt  = `You are a senior semiconductor equipment manufacturing engineer and certified welding inspector at HCS Engineering (Singapore), specialising in AMAT engineering drawings. Examine this weld symbol crop with extreme precision — every detail matters for FAI compliance. Extract all weld symbol rows accurately.`;
 
-      const parsed = await openRouterExtract(apiKey, mode, WELD_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
+      const parsed = await openRouterExtract(apiKey, mode, WELD_SYSTEM_PROMPT, userPrompt, base64Image, mimeType, numScans);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Weld extraction failed" });
