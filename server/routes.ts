@@ -70,6 +70,7 @@ async function geminiExtract(
   const results: any[] = [];
 
   // Call twice — pick most confident / most complete result
+  let lastError = "";
   for (let i = 0; i < 2; i++) {
     try {
       const result = await model.generateContent([userPrompt, imagePart]);
@@ -77,12 +78,13 @@ async function geminiExtract(
       const cleaned = raw.replace(/```json\n?|```/g, "").trim();
       const parsed = JSON.parse(cleaned);
       results.push(parsed);
-    } catch {
-      // skip failed attempt
+    } catch (e: any) {
+      lastError = e?.message || String(e);
+      console.error(`[Gemini] Attempt ${i + 1} failed:`, lastError);
     }
   }
 
-  if (results.length === 0) throw new Error("All Gemini attempts failed");
+  if (results.length === 0) throw new Error(`Gemini failed: ${lastError}`);
 
   // Pick best: prefer "high" confidence, then most rows, then first
   const ranked = results.sort((a, b) => {
