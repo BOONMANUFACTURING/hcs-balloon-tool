@@ -94,6 +94,11 @@ export default function DrawingTool() {
   const panningRef = useRef(false);
   const panStartRef = useRef<{ mouseX: number; mouseY: number; scrollLeft: number; scrollTop: number } | null>(null);
 
+  // ── Drag-to-select (rubber-band) state ──
+  const dragSelectingRef = useRef(false);
+  const dragSelectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [dragSelectRect, setDragSelectRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
   // ── Extraction state ──
   const [pending, setPending] = useState<PendingBalloon | null>(null);
   const [lastCropUrl, setLastCropUrl] = useState<string | null>(null); // persists for right-panel preview
@@ -452,7 +457,7 @@ export default function DrawingTool() {
     const ctx = overlay.getContext("2d")!;
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-    // Active crop rect
+    // Active crop rect (balloon draw mode)
     if (currentRect) {
       ctx.strokeStyle = "#f59e0b";
       ctx.lineWidth   = 2;
@@ -460,6 +465,17 @@ export default function DrawingTool() {
       ctx.strokeRect(currentRect.x, currentRect.y, currentRect.w, currentRect.h);
       ctx.fillStyle = "rgba(245,158,11,0.08)";
       ctx.fillRect(currentRect.x, currentRect.y, currentRect.w, currentRect.h);
+      ctx.setLineDash([]);
+    }
+
+    // Drag-to-select rectangle (blue dashed)
+    if (dragSelectRect && (dragSelectRect.w > 4 || dragSelectRect.h > 4)) {
+      ctx.strokeStyle = "#3b82f6";
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(dragSelectRect.x, dragSelectRect.y, dragSelectRect.w, dragSelectRect.h);
+      ctx.fillStyle = "rgba(59,130,246,0.08)";
+      ctx.fillRect(dragSelectRect.x, dragSelectRect.y, dragSelectRect.w, dragSelectRect.h);
       ctx.setLineDash([]);
     }
 
@@ -571,7 +587,7 @@ export default function DrawingTool() {
           isDragging
         );
       });
-  }, [balloons, currentPage, currentRect, pending, selectedBalloonId, selectedBalloonIds, draggingBalloonId, dragPos, multiDragDeltas, scale, BALLOON_RADIUS]);
+  }, [balloons, currentPage, currentRect, dragSelectRect, pending, selectedBalloonId, selectedBalloonIds, draggingBalloonId, dragPos, multiDragDeltas, scale, BALLOON_RADIUS]);
 
   useEffect(() => { drawOverlay(); }, [drawOverlay]);
 
@@ -671,15 +687,32 @@ export default function DrawingTool() {
       setDraggingBalloonId(hit.id);
       setDragPos({ xPercent: hit.xPercent, yPercent: hit.yPercent });
     } else {
-      // Start panning
-      const container = containerRef.current!;
-      panningRef.current  = true;
-      panStartRef.current = { mouseX: e.clientX, mouseY: e.clientY, scrollLeft: container.scrollLeft, scrollTop: container.scrollTop };
-      setPanning(true);
+      // Empty space click — start drag-to-select
+      const { x, y } = getCanvasXY(e);
+      dragSelectingRef.current  = true;
+      dragSelectStartRef.current = { x, y };
+      setDragSelectRect({ x, y, w: 0, h: 0 });
+      // Also clear any existing selection unless Ctrl/Shift held
+      if (!e.ctrlKey && !e.shiftKey) {
+        setSelectedBalloonIds(new Set());
+        setSelectedBalloonId(null);
+      }
     }
   }
 
   function onMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    // Drag-to-select
+    if (dragSelectingRef.current && dragSelectStartRef.current) {
+      const { x, y } = getCanvasXY(e);
+      const sx = dragSelectStartRef.current.x;
+      const sy = dragSelectStartRef.current.y;
+      setDragSelectRect({
+        x: Math.min(sx, x), y: Math.min(sy, y),
+        w: Math.abs(x - sx),  h: Math.abs(y - sy),
+      });
+      return;
+    }
+
     // Pan
     if (panningRef.current && panStartRef.current) {
       const dx = e.clientX - panStartRef.current.mouseX;
@@ -726,6 +759,35 @@ export default function DrawingTool() {
   }
 
   async function onMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
+    // Finish drag-to-select
+    if (dragSelectingRef.current) {
+      dragSelectingRef.current = false;
+      const rect = dragSelectRect;
+      setDragSelectRect(null);
+      if (rect && (rect.w > 8 || rect.h > 8)) {
+        // Select all balloons whose circle centre falls inside the rect
+        const overlay = overlayRef.current!;
+        const W = overlay.width;
+        const H = overlay.height;
+        const hits = balloonsRef.current.filter(b => {
+          if (b.pageNumber !== currentPage) return false;
+          const cx = (b.xPercent / 100) * W;
+          const cy = (b.yPercent / 100) * H;
+          return cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
+        });
+        if (hits.length > 0) {
+          setSelectedBalloonId(null);
+          setSelectedBalloonIds(prev => {
+            const next = e.ctrlKey || e.shiftKey ? new Set(prev) : new Set<number>();
+            hits.forEach(b => next.add(b.id));
+            return next;
+          });
+        }
+      }
+      dragSelectStartRef.current = null;
+      return;
+    }
+
     // Finish pan
     if (panningRef.current) {
       panningRef.current  = false;
@@ -880,6 +942,12 @@ export default function DrawingTool() {
       setPanning(false);
     }
     if (drawing) { setDrawing(false); setCurrentRect(null); setStartPt(null); }
+    // Cancel drag-select on leave
+    if (dragSelectingRef.current) {
+      dragSelectingRef.current  = false;
+      dragSelectStartRef.current = null;
+      setDragSelectRect(null);
+    }
     // Cancel multi-drag on leave
     if (multiDragStartRef.current) {
       multiDragStartRef.current = null;
@@ -1118,7 +1186,7 @@ export default function DrawingTool() {
     setBulkResult(null);
     const _scansN = (window as any).__HCS_SCAN_COUNT || 1;
     const _modelN = (window as any).__HCS_OPENROUTER_MODE === "deep" ? "Gemma 4 31B" : "Nemotron Vision";
-    setExtractStatus(`Notes scan — sending to AI (${_modelN} · ${_scansN}x)...`);
+    setExtractStatus(`Notes scan — ${_modelN} · ${_scansN}x (auto-retries on timeout)...`);
     try {
       const apiKey = (window as any).__HCS_OPENROUTER_KEY || "";
       const blob   = await fetch(cropDataUrl).then(r => r.blob());
@@ -1218,7 +1286,7 @@ export default function DrawingTool() {
     setLastCropUrl(cropDataUrl);
     const _scansB = (window as any).__HCS_SCAN_COUNT || 1;
     const _modelB = (window as any).__HCS_OPENROUTER_MODE === "deep" ? "Gemma 4 31B" : "Nemotron Vision";
-    setExtractStatus(`BOM scan — sending to AI (${_modelB} · ${_scansB}x)...`);
+    setExtractStatus(`BOM scan — ${_modelB} · ${_scansB}x (auto-retries on timeout)...`);
     setPending({
       cropRect,
       pageNumber: currentPage,
@@ -1305,7 +1373,7 @@ export default function DrawingTool() {
     setLastCropUrl(cropDataUrl);
     const _scansW = (window as any).__HCS_SCAN_COUNT || 1;
     const _modelW = (window as any).__HCS_OPENROUTER_MODE === "deep" ? "Gemma 4 31B" : "Nemotron Vision";
-    setExtractStatus(`Weld scan — sending to AI (${_modelW} · ${_scansW}x)...`);
+    setExtractStatus(`Weld scan — ${_modelW} · ${_scansW}x (auto-retries on timeout)...`);
     // Show crop preview in right panel (same as single balloon mode)
     setPending({
       cropRect,
@@ -1526,6 +1594,38 @@ export default function DrawingTool() {
         </div>
 
         <div className="flex items-center gap-2">
+
+          {/* Multi-select delete — shows when 2+ balloons selected */}
+          {selectedBalloonIds.size > 0 && (
+            <div className="flex items-center gap-1.5 mr-1">
+              <span className="text-xs text-muted-foreground font-medium">
+                {selectedBalloonIds.size} selected
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-8 text-destructive border-destructive/50 hover:bg-destructive/10"
+                onClick={() => {
+                  for (const id of selectedBalloonIds) deleteBalloon.mutate(id);
+                  setSelectedBalloonIds(new Set());
+                }}
+                data-testid="button-delete-selected"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                Delete Selected
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-8"
+                onClick={() => setSelectedBalloonIds(new Set())}
+              >
+                Clear
+              </Button>
+              <div className="h-4 w-px bg-border mx-1" />
+            </div>
+          )}
+
           {/* Draw mode */}
           <Button
             variant={drawMode === true ? "default" : "outline"}

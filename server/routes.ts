@@ -71,11 +71,14 @@ async function openRouterExtract(
   let lastError = "";
   console.log(`[OpenRouter] model=${modelName} scans=${calls}`);
 
-  for (let i = 0; i < calls; i++) {
-    console.log(`[OpenRouter] Scan ${i + 1}/${calls}...`);
+  // Helper: single OpenRouter call with AbortController timeout
+  async function fetchOnce(attempt: number): Promise<any> {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 90_000); // 90s client timeout
     try {
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
@@ -96,17 +99,36 @@ async function openRouterExtract(
           ],
         }),
       });
-
       const data = await response.json() as any;
       if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
-
       const raw     = data.choices?.[0]?.message?.content || "";
       const cleaned = raw.replace(/```json\n?|```/g, "").trim();
-      const parsed  = JSON.parse(cleaned);
-      results.push(parsed);
-    } catch (e: any) {
-      lastError = e?.message || String(e);
-      console.error(`[OpenRouter] Attempt ${i + 1} failed:`, lastError);
+      return JSON.parse(cleaned);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const MAX_RETRIES = 2; // retry up to 2 extra times per scan on timeout/error
+  for (let i = 0; i < calls; i++) {
+    console.log(`[OpenRouter] Scan ${i + 1}/${calls}...`);
+    let success = false;
+    for (let attempt = 0; attempt < MAX_RETRIES && !success; attempt++) {
+      try {
+        if (attempt > 0) {
+          const wait = attempt * 3000;
+          console.log(`[OpenRouter] Retry ${attempt} for scan ${i + 1}, waiting ${wait}ms...`);
+          await new Promise(r => setTimeout(r, wait));
+        }
+        const parsed = await fetchOnce(attempt);
+        results.push(parsed);
+        success = true;
+      } catch (e: any) {
+        lastError = e?.message || String(e);
+        const isTimeout = lastError.includes("abort") || lastError.includes("timeout") || lastError.includes("idle");
+        console.error(`[OpenRouter] Scan ${i + 1} attempt ${attempt + 1} failed (${isTimeout ? "timeout" : "error"}):`, lastError);
+        if (!isTimeout) break; // only retry on timeout, not on API errors
+      }
     }
   }
 
