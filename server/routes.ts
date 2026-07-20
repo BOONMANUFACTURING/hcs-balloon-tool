@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertSessionSchema, insertBalloonSchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import ExcelJS from "exceljs";
 import path from "path";
 import fs from "fs";
@@ -45,6 +45,54 @@ RULES (AMAT-specific):
 - For NOTE rows: nominalValue = 'In Compliance'
 
 Return ONLY the JSON object, no markdown, no explanation.`;
+
+// ─── Gemini helper ────────────────────────────────────────────────────────────
+// Normal search: Flash x2, pick best
+// Deep search:   Pro   x2, pick best
+async function geminiExtract(
+  apiKey: string,
+  modelName: string,   // "gemini-1.5-flash" or "gemini-1.5-pro"
+  systemPrompt: string,
+  userPrompt: string,
+  imageBase64: string,
+  mimeType: string
+): Promise<any> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: systemPrompt,
+  });
+
+  const imagePart = {
+    inlineData: { data: imageBase64, mimeType: mimeType as any },
+  };
+
+  const results: any[] = [];
+
+  // Call twice — pick most confident / most complete result
+  for (let i = 0; i < 2; i++) {
+    try {
+      const result = await model.generateContent([userPrompt, imagePart]);
+      const raw = result.response.text();
+      const cleaned = raw.replace(/```json\n?|```/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      results.push(parsed);
+    } catch {
+      // skip failed attempt
+    }
+  }
+
+  if (results.length === 0) throw new Error("All Gemini attempts failed");
+
+  // Pick best: prefer "high" confidence, then most rows, then first
+  const ranked = results.sort((a, b) => {
+    const confScore = (r: any) => r.confidence === "high" ? 2 : r.confidence === "medium" ? 1 : 0;
+    const rowScore  = (r: any) => Array.isArray(r.rows) ? r.rows.length : Array.isArray(r.notes) ? r.notes.length : 0;
+    return (confScore(b) + rowScore(b)) - (confScore(a) + rowScore(a));
+  });
+
+  return ranked[0];
+}
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // ─── Sessions ───────────────────────────────────────────────────────────────
@@ -211,12 +259,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/extract", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
 
-    const apiKey = req.headers["x-openai-key"] as string || process.env.OPENAI_API_KEY;
+    const apiKey   = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
+    const modelId  = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
 
-    // Mock mode if no API key
     if (!apiKey) {
       return res.json({
-        rawReading: "MOCK MODE — no OpenAI API key configured. Enter your API key in Settings to enable real extraction.",
+        rawReading: "MOCK MODE — no Gemini API key configured. Enter your API key in Settings to enable real extraction.",
         rowType: "DIMENSION",
         description: "DISTANCE",
         gdtType: "",
@@ -227,31 +275,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     try {
-      const openai = new OpenAI({ apiKey });
       const base64Image = req.file.buffer.toString("base64");
-      const mimeType = req.file.mimetype || "image/png";
+      const mimeType    = req.file.mimetype || "image/png";
+      const userPrompt  = `You are a senior semiconductor equipment manufacturing engineer at HCS Engineering (Singapore), specialising in AMAT (Applied Materials) FAI drawings. Examine this engineering drawing crop with extreme care and precision — as if signing off on a first-article inspection report. Extract the feature information accurately.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        max_tokens: 500,
-        messages: [
-          { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: "high" },
-              },
-              { type: "text", text: "Extract the feature information from this engineering drawing crop." },
-            ],
-          },
-        ],
-      });
-
-      const raw = response.choices[0].message.content || "{}";
-      const cleaned = raw.replace(/```json\n?|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const parsed = await geminiExtract(apiKey, modelId, EXTRACTION_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Extraction failed" });
@@ -263,10 +291,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/extract-notes", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
-    const apiKey = req.headers["x-openai-key"] as string || process.env.OPENAI_API_KEY;
+    const apiKey  = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
+    const modelId = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
 
     if (!apiKey) {
-      // Mock: return 3 fake notes
       return res.json({
         mock: true,
         notes: [
@@ -278,12 +306,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     try {
-      const openai = new OpenAI({ apiKey });
       const base64Image = req.file.buffer.toString("base64");
-      const mimeType = req.file.mimetype || "image/png";
+      const mimeType    = req.file.mimetype || "image/png";
 
-      const prompt = `This is a cropped image of the NOTES section from an engineering drawing.
-Your job is to extract EVERY numbered note. First, scan the entire image and count ALL the note numbers you can see (1, 2, 3, 4... up to the highest number). Then extract each one.
+      const systemPrompt = `You are a senior semiconductor equipment manufacturing engineer at HCS Engineering (Singapore), specialising in AMAT FAI drawings. You have expert-level precision in reading engineering drawing notes sections.`;
+
+      const userPrompt = `This is a cropped image of the NOTES section from an AMAT engineering drawing.
+Your job is to extract EVERY numbered note with extreme care. First, scan the entire image top to bottom and count ALL the note numbers you can see. Then extract each one completely.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -302,23 +331,7 @@ Rules:
 - Do NOT include sub-items without their own note number.
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        max_tokens: 2000,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: "high" } },
-              { type: "text", text: prompt },
-            ],
-          },
-        ],
-      });
-
-      const raw = response.choices[0].message.content || "{}";
-      const cleaned = raw.replace(/```json\n?|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const parsed = await geminiExtract(apiKey, modelId, systemPrompt, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Notes extraction failed" });
@@ -330,7 +343,8 @@ Rules:
 
   app.post("/api/extract-bom", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
-    const apiKey = req.headers["x-openai-key"] as string || process.env.OPENAI_API_KEY;
+    const apiKey  = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
+    const modelId = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
 
     if (!apiKey) {
       return res.json({
@@ -343,13 +357,14 @@ Rules:
     }
 
     try {
-      const openai = new OpenAI({ apiKey });
       const base64Image = req.file.buffer.toString("base64");
-      const mimeType = req.file.mimetype || "image/png";
+      const mimeType    = req.file.mimetype || "image/png";
 
-      const prompt = `This is a cropped image of the BOM (Bill of Materials) table from an engineering drawing.
+      const systemPrompt = `You are a senior semiconductor equipment manufacturing engineer at HCS Engineering (Singapore). You are an expert at reading BOM tables from AMAT engineering drawings with high precision.`;
+
+      const userPrompt = `This is a cropped image of the BOM (Bill of Materials) table from an AMAT engineering drawing.
 The table has columns: ITEM | QTY | PART NO. | DESCRIPTION | TCENG NO.
-Extract every data row and return ONLY valid JSON in this exact format:
+Extract every data row with extreme care and return ONLY valid JSON in this exact format:
 {
   "rows": [
     { "itemNo": 1, "qty": 1, "description": "full description text" },
@@ -364,23 +379,7 @@ Rules:
 - Skip any header rows (ITEM, QTY, PART NO., DESCRIPTION, TCENG NO.).
 - Return ONLY the JSON object, no markdown, no explanation.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        max_tokens: 2000,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: "high" } },
-              { type: "text", text: prompt },
-            ],
-          },
-        ],
-      });
-
-      const raw = response.choices[0].message.content || "{}";
-      const cleaned = raw.replace(/```json\n?|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const parsed = await geminiExtract(apiKey, modelId, systemPrompt, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "BOM extraction failed" });
@@ -390,7 +389,8 @@ Rules:
   // ─── Weld Extraction: reads a weld symbol crop, returns multiple rows ──────────────────────
   app.post("/api/extract-weld", upload.single("crop"), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No crop image provided" });
-    const apiKey = req.headers["x-openai-key"] as string || process.env.OPENAI_API_KEY;
+    const apiKey  = req.headers["x-gemini-key"]   as string || process.env.GEMINI_API_KEY;
+    const modelId = req.headers["x-gemini-model"] as string || "gemini-1.5-flash";
 
     if (!apiKey) {
       // Mock mode — return sample 7-row fillet weld output (2X, size+distance+pitch)
@@ -553,28 +553,11 @@ Rules:
 - Return ONLY the JSON object. No markdown fences. No explanation text.`;
 
     try {
-      const openai = new OpenAI({ apiKey });
       const base64Image = req.file.buffer.toString("base64");
-      const mimeType = req.file.mimetype || "image/png";
+      const mimeType    = req.file.mimetype || "image/png";
+      const userPrompt  = `You are a senior semiconductor equipment manufacturing engineer and certified welding inspector at HCS Engineering (Singapore), specialising in AMAT engineering drawings. Examine this weld symbol crop with extreme precision — every detail matters for FAI compliance. Extract all weld symbol rows accurately.`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        max_tokens: 2000,
-        messages: [
-          { role: "system", content: WELD_SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Image}`, detail: "high" } },
-              { type: "text", text: "Extract all weld symbol rows from this engineering drawing crop." },
-            ],
-          },
-        ],
-      });
-
-      const raw = response.choices[0].message.content || "{}";
-      const cleaned = raw.replace(/```json\n?|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const parsed = await geminiExtract(apiKey, modelId, WELD_SYSTEM_PROMPT, userPrompt, base64Image, mimeType);
       res.json(parsed);
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Weld extraction failed" });
