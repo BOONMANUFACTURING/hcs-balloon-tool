@@ -7,9 +7,11 @@ import Home from "@/pages/Home";
 import DrawingTool from "@/pages/DrawingTool";
 import Settings from "@/pages/Settings";
 
-// Restore API key from localStorage on every app load — build 20260526c
-const stored = localStorage.getItem("hcs_openai_key");
-if (stored) (window as any).__HCS_OPENAI_KEY = stored;
+// Restore OpenRouter key + mode from localStorage on every app load
+const storedKey  = localStorage.getItem("__HCS_OPENROUTER_KEY");
+const storedMode = localStorage.getItem("__HCS_OPENROUTER_MODE") || "normal";
+if (storedKey)  (window as any).__HCS_OPENROUTER_KEY  = storedKey;
+(window as any).__HCS_OPENROUTER_MODE = storedMode;
 
 export default function App() {
   return (
